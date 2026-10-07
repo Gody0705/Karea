@@ -16,6 +16,11 @@ DROP TABLE IF EXISTS public.matches CASCADE;
 DROP TABLE IF EXISTS public.likes CASCADE;
 DROP FUNCTION IF EXISTS public.handle_new_like CASCADE;
 
+-- Auto-confirmer tous les utilisateurs existants pour débloquer la connexion
+UPDATE auth.users
+SET email_confirmed_at = NOW()
+WHERE email_confirmed_at IS NULL;
+
 -- ------------------------------------------------------------------------------
 -- 3. TABLE DES PROFILS UTILISATEURS
 -- ------------------------------------------------------------------------------
