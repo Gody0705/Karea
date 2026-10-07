@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "Karea",
+    "tagline": "Authentic live video calls in Africa",
+    "cta_start": "Get started now",
+    "login": "Sign In",
+    "register": "Create Account",
+    "logout": "Log Out"
+  },
+  "auth": {
+    "welcome_back": "Welcome back to Karea",
+    "join_community": "Join Karea",
+    "email_label": "Email address",
+    "email_placeholder": "your.email@example.com",
+    "password_label": "Password",
+    "password_placeholder": "At least 6 characters",
+    "google_button": "Continue with Google",
+    "or_divider": "or with your email",
+    "already_account": "Already have an account?",
+    "no_account": "Don't have an account?",
+    "sign_in": "Sign In",
+    "sign_up": "Sign Up",
+    "loading": "Loading...",
+    "error_min_age": "You must be at least 18 years old to sign up on Karea."
+  },
+  "profile": {
+    "create_title": "Create your profile",
+    "edit_title": "Edit my profile",
+    "photo_label": "Profile photo",
+    "photo_hint": "A clear picture of your face for video calls",
+    "first_name_label": "First name",
+    "first_name_placeholder": "Ex: Amina, Samuel...",
+    "birthdate_label": "Date of birth",
+    "birthdate_hint": "You must be at least 18 years old (automatic age calculation)",
+    "gender_label": "Gender",
+    "gender_male": "Male",
+    "gender_female": "Female",
+    "bio_label": "Short bio",
+    "bio_placeholder": "What excites you, your personality...",
+    "city_label": "City",
+    "city_placeholder": "Ex: Dakar, Abidjan, Douala, Lagos...",
+    "country_label": "Country",
+    "country_placeholder": "Ex: Senegal, Ivory Coast, Cameroon...",
+    "price_label": "Rate per minute (FCFA)",
+    "price_hint": "Rate applied for direct calls",
+    "save_button": "Save my profile",
+    "saving": "Saving...",
+    "years_old": "years old"
+  },
+  "status": {
+    "online": "Online",
+    "in_call": "Busy on call",
+    "offline": "Offline"
+  },
+  "gallery": {
+    "title": "Gallery",
+    "subtitle_male": "Discover available women for a video call",
+    "subtitle_female": "Discover members of the community",
+    "empty": "No profiles available right now",
+    "call_button": "Call",
+    "waiting_busy": "In a call (Please wait)",
+    "user_offline": "Offline",
+    "price_per_min": "{{price}} FCFA / min",
+    "random_card_title": "Random Call Lounge",
+    "random_card_desc": "Connect with someone randomly at a discounted rate!",
+    "random_card_action": "Start random call"
+  },
+  "random": {
+    "title": "Random Lounge",
+    "searching": "Searching for an online partner...",
+    "cancel": "Cancel search",
+    "reduced_rate": "Discounted rate: 60 FCFA / min"
+  },
+  "nav": {
+    "gallery": "Gallery",
+    "random": "Random",
+    "profile": "Profile"
+  }
+}

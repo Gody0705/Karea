@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="kareaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF5E62" />
+      <stop offset="50%" stop-color="#E05A47" />
+      <stop offset="100%" stop-color="#F59E0B" />
+    </linearGradient>
+    <linearGradient id="warmGold" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#FCD34D" />
+    </linearGradient>
+  </defs>
+  <!-- Fond circulaire doux -->
+  <rect width="100" height="100" rx="28" fill="url(#kareaGrad)" />
+  
+  <!-- Coeur stylisé avec symbole vidéo -->
+  <path d="M50 78 C35 63 22 50 22 36 C22 25 30 18 40 18 C45.5 18 50 21 50 21 C50 21 54.5 18 60 18 C70 18 78 25 78 36 C78 50 65 63 50 78 Z" fill="#FFFFFF" fill-opacity="0.95" />
+  
+  <!-- Triangle play / vidéo discret au centre -->
+  <polygon points="46,30 46,44 58,37" fill="#E05A47" />
+</svg>

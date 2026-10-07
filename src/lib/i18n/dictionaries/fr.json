@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "Karea",
+    "tagline": "Rencontres et appels vidéo en direct en Afrique",
+    "cta_start": "Commencer maintenant",
+    "login": "Se connecter",
+    "register": "Créer un compte",
+    "logout": "Se déconnecter"
+  },
+  "auth": {
+    "welcome_back": "Bon retour sur Karea",
+    "join_community": "Rejoignez Karea",
+    "email_label": "Adresse email",
+    "email_placeholder": "votre.email@exemple.com",
+    "password_label": "Mot de passe",
+    "password_placeholder": "Minimum 6 caractères",
+    "google_button": "Continuer avec Google",
+    "or_divider": "ou avec votre email",
+    "already_account": "Déjà un compte ?",
+    "no_account": "Pas encore de compte ?",
+    "sign_in": "Connexion",
+    "sign_up": "Inscription",
+    "loading": "Chargement...",
+    "error_min_age": "Vous devez avoir au moins 18 ans pour vous inscrire sur Karea."
+  },
+  "profile": {
+    "create_title": "Créez votre profil",
+    "edit_title": "Modifier mon profil",
+    "photo_label": "Photo de profil",
+    "photo_hint": "Une photo claire de votre visage pour les appels vidéo",
+    "first_name_label": "Prénom",
+    "first_name_placeholder": "Ex: Amina, Samuel...",
+    "birthdate_label": "Date de naissance",
+    "birthdate_hint": "Vous devez avoir au moins 18 ans (calcul automatique de l'âge)",
+    "gender_label": "Genre",
+    "gender_male": "Homme",
+    "gender_female": "Femme",
+    "bio_label": "Courte bio",
+    "bio_placeholder": "Ce qui vous passionne, votre personnalité...",
+    "city_label": "Ville",
+    "city_placeholder": "Ex: Dakar, Abidjan, Douala, Lagos...",
+    "country_label": "Pays",
+    "country_placeholder": "Ex: Sénégal, Côte d'Ivoire, Cameroun...",
+    "price_label": "Tarif par minute (FCFA)",
+    "price_hint": "Tarif appliqué lors des appels directs",
+    "save_button": "Enregistrer mon profil",
+    "saving": "Enregistrement...",
+    "years_old": "ans"
+  },
+  "status": {
+    "online": "En ligne",
+    "in_call": "Occupé en appel",
+    "offline": "Hors ligne"
+  },
+  "gallery": {
+    "title": "Galerie",
+    "subtitle_male": "Découvrez les femmes disponibles pour un appel vidéo",
+    "subtitle_female": "Découvrez les profils de la communauté",
+    "empty": "Aucun profil disponible pour le moment",
+    "call_button": "Appeler",
+    "waiting_busy": "En appel (Patientez)",
+    "user_offline": "Hors ligne",
+    "price_per_min": "{{price}} FCFA / min",
+    "random_card_title": "Salon Appel au Hasard",
+    "random_card_desc": "Tombez sur une personne aléatoire à tarif réduit !",
+    "random_card_action": "Lancer un appel au hasard"
+  },
+  "random": {
+    "title": "Salon Aléatoire",
+    "searching": "Recherche d'un partenaire en ligne...",
+    "cancel": "Annuler la recherche",
+    "reduced_rate": "Tarif réduit : 60 FCFA / min"
+  },
+  "nav": {
+    "gallery": "Galerie",
+    "random": "Au hasard",
+    "profile": "Profil"
+  }
+}
