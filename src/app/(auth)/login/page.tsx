@@ -70,11 +70,16 @@ function LoginForm() {
       })
 
       if (error) {
-        if (error.message.includes('Invalid login credentials')) {
+        const msg = error.message?.toLowerCase() || ''
+        if (msg.includes('invalid login credentials') || msg.includes('invalid grant')) {
           setErrorMessage('Email ou mot de passe incorrect.')
-        } else if (error.message.includes('Email not confirmed')) {
+        } else if (msg.includes('email not confirmed') || msg.includes('not confirmed')) {
           setErrorMessage('Veuillez confirmer votre adresse email avant de vous connecter.')
           setCanResendEmail(true)
+        } else if (msg.includes('failed to fetch') || msg.includes('network')) {
+          setErrorMessage(
+            'Connexion impossible au serveur. Veuillez vérifier votre connexion Internet ou désactiver temporairement votre bloqueur de publicités (Adblock / Brave Shields).'
+          )
         } else {
           setErrorMessage(error.message)
         }
