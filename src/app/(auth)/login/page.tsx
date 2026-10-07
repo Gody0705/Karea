@@ -30,9 +30,37 @@ function LoginForm() {
     }
   }, [searchParams])
 
+  const [canResendEmail, setCanResendEmail] = useState(false)
+  const [isResending, setIsResending] = useState(false)
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      setErrorMessage('Veuillez renseigner votre adresse email.')
+      return
+    }
+    setIsResending(true)
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+      })
+      if (error) {
+        setErrorMessage(error.message)
+      } else {
+        setInfoMessage('Un nouvel email de confirmation a été envoyé.')
+        setErrorMessage(null)
+      }
+    } catch {
+      setErrorMessage("Impossible de renvoyer l'email pour le moment.")
+    } finally {
+      setIsResending(false)
+    }
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMessage(null)
+    setCanResendEmail(false)
     setIsLoading(true)
 
     try {
@@ -46,6 +74,7 @@ function LoginForm() {
           setErrorMessage('Email ou mot de passe incorrect.')
         } else if (error.message.includes('Email not confirmed')) {
           setErrorMessage('Veuillez confirmer votre adresse email avant de vous connecter.')
+          setCanResendEmail(true)
         } else {
           setErrorMessage(error.message)
         }
@@ -104,9 +133,21 @@ function LoginForm() {
       )}
 
       {errorMessage && (
-        <div className="mb-4 p-3.5 rounded-2xl bg-red-950/50 border border-red-500/30 text-xs text-red-300 flex items-start gap-2.5">
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-          <span>{errorMessage}</span>
+        <div className="mb-4 p-3.5 rounded-2xl bg-red-950/50 border border-red-500/30 text-xs text-red-300 flex flex-col gap-2">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+          {canResendEmail && (
+            <button
+              type="button"
+              onClick={handleResendConfirmation}
+              disabled={isResending}
+              className="text-left text-xs text-[#E05A47] hover:underline font-semibold pl-6 cursor-pointer"
+            >
+              {isResending ? 'Envoi en cours...' : "Renvoyer l'email de confirmation"}
+            </button>
+          )}
         </div>
       )}
 
