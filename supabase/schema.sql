@@ -22,27 +22,31 @@ SET email_confirmed_at = NOW()
 WHERE email_confirmed_at IS NULL;
 
 -- ------------------------------------------------------------------------------
--- 3. TABLE DES PROFILS UTILISATEURS
+-- 3. TABLE DES PROFILS UTILISATEURS (ONBOARDING RAPIDE : SEUL LE GENRE EST REQUIS)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    first_name TEXT NOT NULL,
-    birthdate DATE NOT NULL,
+    first_name TEXT NOT NULL DEFAULT 'User',
+    birthdate DATE,
     gender TEXT NOT NULL CHECK (gender IN ('male', 'female')),
     bio TEXT CHECK (char_length(bio) <= 300),
-    city TEXT NOT NULL,
-    country TEXT NOT NULL,
+    city TEXT,
+    country TEXT,
     avatar_url TEXT,
-    is_profile_completed BOOLEAN DEFAULT FALSE,
-    status TEXT NOT NULL DEFAULT 'offline' CHECK (status IN ('online', 'in_call', 'offline')),
+    is_profile_completed BOOLEAN DEFAULT TRUE,
+    status TEXT NOT NULL DEFAULT 'online' CHECK (status IN ('online', 'in_call', 'offline')),
     last_seen_at TIMESTAMPTZ DEFAULT NOW(),
     price_per_minute INTEGER NOT NULL DEFAULT 100 CHECK (price_per_minute >= 0),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Ajout sécurisé des nouvelles colonnes si la table profiles existait déjà
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'offline' CHECK (status IN ('online', 'in_call', 'offline'));
+-- Rendre les champs non obligatoires pour l'onboarding rapide si la table existait
+ALTER TABLE public.profiles ALTER COLUMN birthdate DROP NOT NULL;
+ALTER TABLE public.profiles ALTER COLUMN city DROP NOT NULL;
+ALTER TABLE public.profiles ALTER COLUMN country DROP NOT NULL;
+ALTER TABLE public.profiles ALTER COLUMN first_name SET DEFAULT 'User';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'online' CHECK (status IN ('online', 'in_call', 'offline'));
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS price_per_minute INTEGER NOT NULL DEFAULT 100 CHECK (price_per_minute >= 0);
 
@@ -50,12 +54,12 @@ CREATE INDEX IF NOT EXISTS idx_profiles_gender_status ON public.profiles(gender,
 CREATE INDEX IF NOT EXISTS idx_profiles_completed ON public.profiles(is_profile_completed);
 
 -- ------------------------------------------------------------------------------
--- 4. VÉRIFICATION DE LA MAJORITÉ (18 ANS RÉVOLUS OBLIGATOIRES SUR BIRTHDATE)
+-- 4. VÉRIFICATION DE LA MAJORITÉ & VERROUILLAGE DU GENRE
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.check_user_min_age()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.birthdate > (CURRENT_DATE - INTERVAL '18 years') THEN
+    IF NEW.birthdate IS NOT NULL AND NEW.birthdate > (CURRENT_DATE - INTERVAL '18 years') THEN
         RAISE EXCEPTION 'Vous devez avoir au moins 18 ans pour vous inscrire sur Karea.';
     END IF;
     RETURN NEW;
@@ -67,6 +71,23 @@ CREATE TRIGGER enforce_min_age
 BEFORE INSERT OR UPDATE OF birthdate ON public.profiles
 FOR EACH ROW
 EXECUTE FUNCTION public.check_user_min_age();
+
+-- Verrouillage du genre : une fois défini, l'utilisateur ne peut plus le changer
+CREATE OR REPLACE FUNCTION public.prevent_gender_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.gender IS NOT NULL AND NEW.gender IS NOT NULL AND OLD.gender <> NEW.gender THEN
+        RAISE EXCEPTION 'Le genre ne peut plus être modifié une fois défini.';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_prevent_gender_change ON public.profiles;
+CREATE TRIGGER trg_prevent_gender_change
+BEFORE UPDATE OF gender ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.prevent_gender_change();
 
 -- ------------------------------------------------------------------------------
 -- 5. MESSAGERIE ASYMÉTRIQUE : CONVERSATIONS & DÉBLOCAGE

@@ -13,11 +13,11 @@ export interface Database {
         Row: {
           id: string
           first_name: string
-          birthdate: string
+          birthdate: string | null
           gender: 'male' | 'female'
           bio: string | null
-          city: string
-          country: string
+          city: string | null
+          country: string | null
           avatar_url: string | null
           is_profile_completed: boolean
           status: 'online' | 'in_call' | 'offline'
@@ -28,12 +28,12 @@ export interface Database {
         }
         Insert: {
           id: string
-          first_name: string
-          birthdate: string
+          first_name?: string
+          birthdate?: string | null
           gender: 'male' | 'female'
           bio?: string | null
-          city: string
-          country: string
+          city?: string | null
+          country?: string | null
           avatar_url?: string | null
           is_profile_completed?: boolean
           status?: 'online' | 'in_call' | 'offline'
@@ -45,11 +45,11 @@ export interface Database {
         Update: {
           id?: string
           first_name?: string
-          birthdate?: string
+          birthdate?: string | null
           gender?: 'male' | 'female'
           bio?: string | null
-          city?: string
-          country?: string
+          city?: string | null
+          country?: string | null
           avatar_url?: string | null
           is_profile_completed?: boolean
           status?: 'online' | 'in_call' | 'offline'
@@ -58,6 +58,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       conversations: {
         Row: {
@@ -90,6 +91,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       messages: {
         Row: {
@@ -119,6 +121,7 @@ export interface Database {
           is_read?: boolean
           created_at?: string
         }
+        Relationships: []
       }
       random_call_queue: {
         Row: {
@@ -151,6 +154,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       call_sessions: {
         Row: {
@@ -198,7 +202,20 @@ export interface Database {
           platform_fee?: number
           created_at?: string
         }
+        Relationships: []
       }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
     }
   }
 }
