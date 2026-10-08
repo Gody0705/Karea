@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_gender_status ON public.profiles(gender,
 CREATE INDEX IF NOT EXISTS idx_profiles_completed ON public.profiles(is_profile_completed);
 
 -- ------------------------------------------------------------------------------
--- 4. VÉRIFICATION DE LA MAJORITÉ & VERROUILLAGE DU GENRE
+-- 4. VÉRIFICATION DE LA MAJORITÉ & VERROUILLAGE DU GENRE (LOCK_GENDER)
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.check_user_min_age()
 RETURNS TRIGGER AS $$
@@ -73,8 +73,8 @@ BEFORE INSERT OR UPDATE OF birthdate ON public.profiles
 FOR EACH ROW
 EXECUTE FUNCTION public.check_user_min_age();
 
--- Verrouillage du genre : une fois défini, l'utilisateur ne peut plus le changer
-CREATE OR REPLACE FUNCTION public.prevent_gender_change()
+-- Verrouillage du genre : fonction public.lock_gender()
+CREATE OR REPLACE FUNCTION public.lock_gender()
 RETURNS TRIGGER AS $$
 BEGIN
     IF OLD.gender IS NOT NULL AND NEW.gender IS NOT NULL AND OLD.gender <> NEW.gender THEN
@@ -84,11 +84,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Trigger lock_gender_trigger sur public.profiles
+DROP TRIGGER IF EXISTS lock_gender_trigger ON public.profiles;
 DROP TRIGGER IF EXISTS trg_prevent_gender_change ON public.profiles;
-CREATE TRIGGER trg_prevent_gender_change
+CREATE TRIGGER lock_gender_trigger
 BEFORE UPDATE OF gender ON public.profiles
 FOR EACH ROW
-EXECUTE FUNCTION public.prevent_gender_change();
+EXECUTE FUNCTION public.lock_gender();
 
 -- ------------------------------------------------------------------------------
 -- 5. MESSAGERIE ASYMÉTRIQUE : CONVERSATIONS & DÉBLOCAGE
