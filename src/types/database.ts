@@ -12,9 +12,9 @@ export interface Database {
       profiles: {
         Row: {
           id: string
-          first_name: string
-          birthdate: string | null
           gender: 'male' | 'female'
+          first_name: string | null
+          birthdate: string | null
           bio: string | null
           city: string | null
           country: string | null
@@ -28,9 +28,9 @@ export interface Database {
         }
         Insert: {
           id: string
-          first_name?: string
-          birthdate?: string | null
           gender: 'male' | 'female'
+          first_name?: string | null
+          birthdate?: string | null
           bio?: string | null
           city?: string | null
           country?: string | null
@@ -44,9 +44,9 @@ export interface Database {
         }
         Update: {
           id?: string
-          first_name?: string
-          birthdate?: string | null
           gender?: 'male' | 'female'
+          first_name?: string | null
+          birthdate?: string | null
           bio?: string | null
           city?: string | null
           country?: string | null

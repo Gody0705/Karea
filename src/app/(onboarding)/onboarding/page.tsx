@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
@@ -11,7 +11,7 @@ import type { Database } from '@/types/database'
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null)
   const [selectedGender, setSelectedGender] = useState<'female' | 'male' | null>(null)
@@ -21,11 +21,15 @@ export default function OnboardingPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
+    let isMounted = true
+
     async function checkExistingProfile() {
       try {
         const {
           data: { user },
         } = await supabase.auth.getUser()
+
+        if (!isMounted) return
 
         if (!user) {
           router.push('/login')
@@ -41,27 +45,37 @@ export default function OnboardingPage() {
           .eq('id', user.id)
           .maybeSingle<{ gender: string | null; first_name: string | null }>()
 
+        if (!isMounted) return
+
         if (profile?.gender) {
           // Genre déjà configuré : accès direct à la galerie
           router.push('/discover')
           return
         }
 
-        // Pré-remplir le pseudo si déjà renseigné dans user metadata
-        if (user.user_metadata?.full_name || user.user_metadata?.name) {
+        // Pré-remplir le pseudo si déjà renseigné dans le profil ou métadonnées
+        if (profile?.first_name && !profile.first_name.startsWith('User_')) {
+          setUsername(profile.first_name)
+        } else if (user.user_metadata?.full_name || user.user_metadata?.name) {
           setUsername(user.user_metadata.full_name || user.user_metadata.name)
         }
       } catch {
         // En cas d'erreur de chargement
       } finally {
-        setIsLoading(false)
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
 
     checkExistingProfile()
+
+    return () => {
+      isMounted = false
+    }
   }, [router, supabase])
 
-  const handleCompleteOnboarding = async (e: React.FormEvent) => {
+  const handleCompleteOnboarding = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
     if (!currentUser) return
@@ -74,9 +88,15 @@ export default function OnboardingPage() {
     setIsSubmitting(true)
     setErrorMessage(null)
 
-    // Attribution d'un pseudo par défaut unique si non renseigné
+    // Récupération prioritaire et fiable du pseudo saisi
+    const form = e.currentTarget
+    const formData = new FormData(form)
+    const formVal = (formData.get('username') as string) ?? username
+    const trimmedUsername = formVal.trim()
+
+    // Attribution d'un pseudo par défaut unique UNIQUEMENT si le champ est vide
     const defaultUserCode = currentUser.id.replace(/-/g, '').slice(0, 6).toUpperCase()
-    const finalFirstName = username.trim() || `User_${defaultUserCode}`
+    const finalFirstName = trimmedUsername.length > 0 ? trimmedUsername : `User_${defaultUserCode}`
 
     try {
       const profileData: Database['public']['Tables']['profiles']['Insert'] = {
@@ -241,6 +261,8 @@ export default function OnboardingPage() {
             </div>
 
             <Input
+              id="username"
+              name="username"
               type="text"
               placeholder={`Ex : Alex (ou par défaut : ${defaultSuggestedName})`}
               value={username}

@@ -22,13 +22,13 @@ SET email_confirmed_at = NOW()
 WHERE email_confirmed_at IS NULL;
 
 -- ------------------------------------------------------------------------------
--- 3. TABLE DES PROFILS UTILISATEURS (ONBOARDING RAPIDE : SEUL LE GENRE EST REQUIS)
+-- 3. TABLE DES PROFILS UTILISATEURS (SEULS ID ET GENRE SONT OBLIGATOIRES)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    first_name TEXT NOT NULL DEFAULT 'User',
-    birthdate DATE,
     gender TEXT NOT NULL CHECK (gender IN ('male', 'female')),
+    first_name TEXT DEFAULT 'User',
+    birthdate DATE,
     bio TEXT CHECK (char_length(bio) <= 300),
     city TEXT,
     country TEXT,
@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Rendre les champs non obligatoires pour l'onboarding rapide si la table existait
+-- Rendre explicitement toutes les colonnes facultatives (sauf id et gender)
+ALTER TABLE public.profiles ALTER COLUMN first_name DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN birthdate DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN city DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN country DROP NOT NULL;
