@@ -20,7 +20,7 @@ export interface Database {
           country: string | null
           avatar_url: string | null
           is_profile_completed: boolean
-          status: 'online' | 'in_call' | 'offline'
+          status: 'online' | 'busy' | 'offline' | 'in_call'
           last_seen_at: string
           price_per_minute: number
           created_at: string
@@ -36,7 +36,7 @@ export interface Database {
           country?: string | null
           avatar_url?: string | null
           is_profile_completed?: boolean
-          status?: 'online' | 'in_call' | 'offline'
+          status?: 'online' | 'busy' | 'offline' | 'in_call'
           last_seen_at?: string
           price_per_minute?: number
           created_at?: string
@@ -52,7 +52,7 @@ export interface Database {
           country?: string | null
           avatar_url?: string | null
           is_profile_completed?: boolean
-          status?: 'online' | 'in_call' | 'offline'
+          status?: 'online' | 'busy' | 'offline' | 'in_call'
           last_seen_at?: string
           price_per_minute?: number
           created_at?: string
@@ -225,4 +225,4 @@ export type Conversation = Database['public']['Tables']['conversations']['Row']
 export type Message = Database['public']['Tables']['messages']['Row']
 export type RandomCallQueue = Database['public']['Tables']['random_call_queue']['Row']
 export type CallSession = Database['public']['Tables']['call_sessions']['Row']
-export type UserStatus = 'online' | 'in_call' | 'offline'
+export type UserStatus = 'online' | 'busy' | 'in_call' | 'offline'

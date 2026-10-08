@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     country TEXT,
     avatar_url TEXT,
     is_profile_completed BOOLEAN DEFAULT TRUE,
-    status TEXT NOT NULL DEFAULT 'online' CHECK (status IN ('online', 'in_call', 'offline')),
+    status TEXT NOT NULL DEFAULT 'offline' CHECK (status IN ('online', 'busy', 'offline', 'in_call')),
     last_seen_at TIMESTAMPTZ DEFAULT NOW(),
     price_per_minute INTEGER NOT NULL DEFAULT 100 CHECK (price_per_minute >= 0),
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -47,12 +47,27 @@ ALTER TABLE public.profiles ALTER COLUMN birthdate DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN city DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN country DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN first_name SET DEFAULT 'User';
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'online' CHECK (status IN ('online', 'in_call', 'offline'));
+ALTER TABLE public.profiles ALTER COLUMN status SET DEFAULT 'offline';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'offline' CHECK (status IN ('online', 'busy', 'offline', 'in_call'));
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS price_per_minute INTEGER NOT NULL DEFAULT 100 CHECK (price_per_minute >= 0);
 
 CREATE INDEX IF NOT EXISTS idx_profiles_gender_status ON public.profiles(gender, status);
 CREATE INDEX IF NOT EXISTS idx_profiles_completed ON public.profiles(is_profile_completed);
+CREATE INDEX IF NOT EXISTS idx_profiles_last_seen ON public.profiles(last_seen_at DESC);
+
+-- Activation de Supabase Realtime sur la table profiles
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'profiles'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+  END IF;
+END $$;
 
 -- ------------------------------------------------------------------------------
 -- 4. VÉRIFICATION DE LA MAJORITÉ & VERROUILLAGE DU GENRE (LOCK_GENDER)
