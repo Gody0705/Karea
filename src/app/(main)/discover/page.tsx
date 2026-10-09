@@ -7,6 +7,7 @@ import { GalleryProfileCard } from '@/components/gallery/GalleryProfileCard'
 import { SignOutButton } from '@/components/auth/SignOutButton'
 import { VideoCallRoom } from '@/components/video/VideoCallRoom'
 import { IncomingCallModal } from '@/components/video/IncomingCallModal'
+import { BottomNav } from '@/components/navigation/BottomNav'
 import { fetchAgoraToken } from '@/lib/agora/token'
 import {
   Users,
@@ -16,6 +17,8 @@ import {
   Search,
   X,
   Loader2,
+  Heart,
+  Sparkles,
 } from 'lucide-react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import type { Profile, CallSession } from '@/types/database'
@@ -34,6 +37,8 @@ interface IncomingCallState {
   caller: Profile
 }
 
+type GallerySubTab = 'popular' | 'following'
+
 export default function DiscoverGalleryPage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -42,6 +47,7 @@ export default function DiscoverGalleryPage() {
   const [myProfile, setMyProfile] = useState<Profile | null>(null)
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [activeSubTab, setActiveSubTab] = useState<GallerySubTab>('popular')
   const [isLoading, setIsLoading] = useState(true)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
@@ -460,8 +466,8 @@ export default function DiscoverGalleryPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative overflow-hidden pb-10">
-      {/* 1. ÉCRAN D'APPEL VIDÉO EN COURS (AGORA RTC) */}
+    <main className="min-h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative overflow-hidden pb-20">
+      {/* 1. ÉCRAN D'APPEL VIDÉO EN COURS (AGORA RTC - Plein écran) */}
       {activeCall && currentUser && (
         <VideoCallRoom
           session={activeCall.session}
@@ -521,7 +527,7 @@ export default function DiscoverGalleryPage() {
       )}
 
       {/* En-tête de la Galerie */}
-      <header className="sticky top-0 z-40 bg-[#0D0B0B]/85 backdrop-blur-md px-5 pt-4 pb-3 border-b border-stone-800/80 space-y-3">
+      <header className="sticky top-0 z-40 bg-[#0D0B0B]/85 backdrop-blur-md px-5 pt-4 pb-2 border-b border-stone-800/80 space-y-3">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-2xl bg-gradient-to-tr from-[#E05A47] to-[#F59E0B] flex items-center justify-center shadow shadow-red-950/40">
@@ -541,67 +547,136 @@ export default function DiscoverGalleryPage() {
           <SignOutButton />
         </div>
 
-        {/* Barre de recherche et statistiques en temps réel */}
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder={`Rechercher parmi les ${oppositeGenderLabel.toLowerCase()}...`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-stone-900/90 border border-stone-800 rounded-xl pl-8 pr-3 py-2 text-xs text-stone-100 placeholder:text-stone-500 focus:outline-none focus:border-[#E05A47]/60 transition-all"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+        {/* Sous-onglets : Populaire / Suivre */}
+        <div className="flex items-center gap-6 pt-1 border-b border-stone-800/50 pb-0.5">
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('popular')}
+            className={`text-sm font-extrabold pb-2 relative transition-all cursor-pointer ${
+              activeSubTab === 'popular'
+                ? 'text-white'
+                : 'text-stone-500 hover:text-stone-300'
+            }`}
+          >
+            <span>Populaire</span>
+            {activeSubTab === 'popular' && (
+              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-gradient-to-r from-[#E05A47] to-[#F59E0B] rounded-full shadow-sm shadow-red-500" />
             )}
-          </div>
+          </button>
 
-          <div className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 shrink-0">
-            <Radio className="w-3 h-3 animate-pulse text-emerald-400" />
-            <span>{onlineCount} disponibles</span>
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('following')}
+            className={`text-sm font-extrabold pb-2 relative transition-all cursor-pointer ${
+              activeSubTab === 'following'
+                ? 'text-white'
+                : 'text-stone-500 hover:text-stone-300'
+            }`}
+          >
+            <span>Suivre</span>
+            {activeSubTab === 'following' && (
+              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-gradient-to-r from-[#E05A47] to-[#F59E0B] rounded-full shadow-sm shadow-red-500" />
+            )}
+          </button>
         </div>
+
+        {/* Barre de recherche et statistiques en temps réel (Visible sur Populaire) */}
+        {activeSubTab === 'popular' && (
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={`Rechercher parmi les ${oppositeGenderLabel.toLowerCase()}...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-stone-900/90 border border-stone-800 rounded-xl pl-8 pr-3 py-2 text-xs text-stone-100 placeholder:text-stone-500 focus:outline-none focus:border-[#E05A47]/60 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 shrink-0">
+              <Radio className="w-3 h-3 animate-pulse text-emerald-400" />
+              <span>{onlineCount} disponibles</span>
+            </div>
+          </div>
+        )}
       </header>
 
-      {/* Grille 2 colonnes de profils */}
+      {/* Contenu principal */}
       <div className="p-4 flex-1">
-        {filteredProfiles.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3.5">
-            {filteredProfiles.map((profile) => (
-              <GalleryProfileCard
-                key={profile.id}
-                profile={profile}
-                onCallClick={handleCallClick}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-20 px-4 space-y-4">
-            <div className="w-14 h-14 rounded-3xl bg-stone-900 border border-stone-800 mx-auto flex items-center justify-center text-stone-400">
-              <Users className="w-7 h-7 text-stone-500" />
+        {/* SOUS-ONGLET 1 : POPULAIRE (Grille de profils) */}
+        {activeSubTab === 'popular' && (
+          <>
+            {filteredProfiles.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3.5">
+                {filteredProfiles.map((profile) => (
+                  <GalleryProfileCard
+                    key={profile.id}
+                    profile={profile}
+                    onCallClick={handleCallClick}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-20 px-4 space-y-4">
+                <div className="w-14 h-14 rounded-3xl bg-stone-900 border border-stone-800 mx-auto flex items-center justify-center text-stone-400">
+                  <Users className="w-7 h-7 text-stone-500" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-stone-200">
+                    {searchQuery
+                      ? 'Aucun résultat correspondant'
+                      : `Aucun profil de ${oppositeGenderLabel.toLowerCase()} pour l’instant`}
+                  </h3>
+                  <p className="text-xs text-stone-400 max-w-xs mx-auto">
+                    {searchQuery
+                      ? 'Essayez de rechercher avec un autre mot-clé ou une autre ville.'
+                      : `Dès qu’un profil de type ${oppositeGenderLabel.toLowerCase()} s'inscrit, il apparaîtra automatiquement ici en temps réel.`}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* SOUS-ONGLET 2 : SUIVRE (Abonnements / Favoris mutuels - État vide) */}
+        {activeSubTab === 'following' && (
+          <div className="text-center py-24 px-6 space-y-4 flex flex-col items-center justify-center">
+            <div className="w-16 h-16 rounded-3xl bg-stone-900 border border-stone-800 flex items-center justify-center text-stone-500 shadow-inner">
+              <Heart className="w-8 h-8 text-stone-500" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5 max-w-xs">
               <h3 className="text-base font-bold text-stone-200">
-                {searchQuery
-                  ? 'Aucun résultat correspondant'
-                  : `Aucun profil de ${oppositeGenderLabel.toLowerCase()} pour l’instant`}
+                Aucun profil suivi pour l’instant
               </h3>
-              <p className="text-xs text-stone-400 max-w-xs mx-auto">
-                {searchQuery
-                  ? 'Essayez de rechercher avec un autre mot-clé ou une autre ville.'
-                  : `Dès qu’un profil de type ${oppositeGenderLabel.toLowerCase()} s'inscrit, il apparaîtra automatiquement ici en temps réel.`}
+              <p className="text-xs text-stone-400 leading-relaxed font-medium">
+                Les profils que vous suivez ou avec lesquels vous échangez régulièrement apparaîtront dans cette liste dédiée.
               </p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('popular')}
+                className="px-4 py-2 rounded-xl bg-stone-900 border border-stone-800 text-xs text-[#E05A47] font-bold hover:border-[#E05A47]/40 transition-all cursor-pointer"
+              >
+                Explorer la galerie populaire
+              </button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Barre de navigation du bas (masquée pendant un appel vidéo) */}
+      {!activeCall && <BottomNav />}
     </main>
   )
 }
