@@ -171,31 +171,43 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           }, 1200)
         })
 
-        // Création des pistes audio et vidéo locales
+        // Création résiliente des pistes audio et vidéo (ne plante pas si une caméra ou un micro est absent)
+        let micTrack: IMicrophoneAudioTrack | null = null
+        let camTrack: ICameraVideoTrack | null = null
+
         try {
-          const [micTrack, camTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
-            { encoderConfig: 'music_standard' },
-            { encoderConfig: '720p_1', facingMode: 'user' }
-          )
+          micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' })
+        } catch (micErr) {
+          console.warn('Microphone non détecté ou accès refusé:', micErr)
+        }
 
-          if (isCancelled) {
-            micTrack.stop()
-            micTrack.close()
-            camTrack.stop()
-            camTrack.close()
-            return
-          }
+        try {
+          camTrack = await AgoraRTC.createCameraVideoTrack({
+            encoderConfig: '720p_1',
+            facingMode: 'user',
+          })
+        } catch (camErr) {
+          console.warn('Caméra non détectée ou accès refusé:', camErr)
+        }
 
-          audioTrackRef.current = micTrack
-          videoTrackRef.current = camTrack
-          setLocalTracksReady(true)
-        } catch (mediaError: any) {
-          console.error('Erreur accès micro/caméra:', mediaError)
+        if (isCancelled) {
+          micTrack?.stop()
+          micTrack?.close()
+          camTrack?.stop()
+          camTrack?.close()
+          return
+        }
+
+        if (!micTrack && !camTrack) {
           if (!isCancelled) {
-            setErrorMessage('Impossible d’accéder à la caméra ou au microphone.')
+            setErrorMessage('Aucun microphone ou caméra disponible sur cet appareil.')
           }
           return
         }
+
+        if (micTrack) audioTrackRef.current = micTrack
+        if (camTrack) videoTrackRef.current = camTrack
+        setLocalTracksReady(true)
 
         // Rejoindre le canal Agora sécurisé avec token
         await agoraClient.join(appId, channelName, token, currentUserId)
@@ -207,9 +219,10 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         isJoinedRef.current = true
         setIsJoined(true)
 
-        // Publication des flux locaux
-        if (audioTrackRef.current && videoTrackRef.current) {
-          await agoraClient.publish([audioTrackRef.current, videoTrackRef.current])
+        // Publication des flux locaux disponibles
+        const tracksToPublish = [micTrack, camTrack].filter(Boolean) as (IMicrophoneAudioTrack | ICameraVideoTrack)[]
+        if (tracksToPublish.length > 0) {
+          await agoraClient.publish(tracksToPublish)
         }
 
         if (!isCancelled) {
