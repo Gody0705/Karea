@@ -422,8 +422,8 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
             setShowLowBalanceWarning(false)
           }
 
-          // Couper l'appel des DEUX côtés quand le solde atteint 0
-          if (data.should_hangup || remainingTokens <= 0) {
+          // Couper l'appel des DEUX côtés UNIQUEMENT quand le solde atteint 0
+          if (remainingTokens <= 0 || (data.should_hangup && remainingTokens <= 0)) {
             setIsCallTerminatedByBalance(true)
             setCallStatusText('Solde de tokens épuisé. Fin de l’appel.')
             if (billingTimerRef.current) {

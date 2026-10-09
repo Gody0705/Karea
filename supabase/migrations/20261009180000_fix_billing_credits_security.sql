@@ -291,7 +291,7 @@ BEGIN
     v_rate_per_sec := (COALESCE(v_session.price_per_minute, 25)::NUMERIC) / 60.0;
     v_total_cost_chunk := ROUND((v_rate_per_sec * v_seconds_to_bill)::NUMERIC, 4);
 
-    -- Si le solde de l'homme est inférieur au coût demandé
+    -- Si le solde de l'homme est inférieur au coût demandé (épuisement du solde)
     IF v_man.token_balance < v_total_cost_chunk THEN
         IF v_rate_per_sec > 0 AND v_man.token_balance > 0 THEN
             v_seconds_to_bill := FLOOR(v_man.token_balance / v_rate_per_sec)::INTEGER;
@@ -300,7 +300,6 @@ BEGIN
             v_seconds_to_bill := 0;
             v_total_cost_chunk := 0;
         END IF;
-        v_should_hangup := TRUE;
     END IF;
 
     IF v_total_cost_chunk > 0 THEN
@@ -356,10 +355,12 @@ BEGIN
         v_new_woman_earned := v_woman.earned_tokens;
     END IF;
 
-    -- Si le solde de l'homme est tombé à 0, couper proprement l'appel en base
+    -- RÈGLE STRICTE : Couper UNIQUEMENT quand le solde restant atteint 0
     IF v_new_man_balance <= 0 THEN
         v_should_hangup := TRUE;
         PERFORM public.end_direct_call(p_session_id, 'ended');
+    ELSE
+        v_should_hangup := FALSE;
     END IF;
 
     RETURN jsonb_build_object(
