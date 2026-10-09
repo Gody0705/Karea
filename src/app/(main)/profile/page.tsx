@@ -88,7 +88,7 @@ export default function ProfilePage() {
   const femaleEarningsFCFA = 15000 // Valeur en argent des gains pour compte femme
 
   return (
-    <main className="min-h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative pb-28">
+    <main className="min-h-screen w-full max-w-md mx-auto bg-[#0D0B0B] text-stone-100 flex flex-col relative pb-32 sm:pb-36">
       {/* Halos lumineux d'ambiance */}
       <div className="absolute top-0 -left-20 w-72 h-72 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/3 -right-20 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />

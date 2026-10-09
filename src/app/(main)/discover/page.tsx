@@ -530,7 +530,7 @@ export default function DiscoverGalleryPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative pb-28">
+    <main className="min-h-screen w-full max-w-md mx-auto bg-[#0D0B0B] text-stone-100 flex flex-col relative pb-32 sm:pb-36">
       {/* 1. ÉCRAN D'APPEL VIDÉO EN COURS (AGORA RTC) */}
       {activeCall && currentUser && (
         <VideoCallRoom
