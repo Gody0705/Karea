@@ -8,10 +8,6 @@ import {
   Video as VideoIcon,
   VideoOff,
   PhoneOff,
-  Maximize2,
-  Minimize2,
-  Sparkles,
-  Volume2,
   AlertTriangle,
   MapPin,
 } from 'lucide-react'
@@ -30,7 +26,6 @@ interface VideoCallRoomProps {
 }
 
 export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
-  session,
   partner,
   isCaller,
   token,
@@ -39,14 +34,25 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   currentUserId,
   onEndCall,
 }) => {
-  const [client, setClient] = useState<IAgoraRTCClient | null>(null)
-  const [localAudioTrack, setLocalAudioTrack] = useState<IMicrophoneAudioTrack | null>(null)
-  const [localVideoTrack, setLocalVideoTrack] = useState<ICameraVideoTrack | null>(null)
-  const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null)
+  // Références d'instances Agora (stockées en useRef pour ne JAMAIS redéclencher les useEffect)
+  const clientRef = useRef<IAgoraRTCClient | null>(null)
+  const audioTrackRef = useRef<IMicrophoneAudioTrack | null>(null)
+  const videoTrackRef = useRef<ICameraVideoTrack | null>(null)
+  const isJoinedRef = useRef(false)
+  const isLeavingRef = useRef(false)
+  const isCleaningUpRef = useRef(false)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Éléments DOM pour l'affichage vidéo
+  const localVideoRef = useRef<HTMLDivElement>(null)
+  const remoteVideoRef = useRef<HTMLDivElement>(null)
+
+  // États React pour l'interface utilisateur
+  const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null)
+  const [remoteHasVideo, setRemoteHasVideo] = useState(false)
+  const [localTracksReady, setLocalTracksReady] = useState(false)
   const [isMicMuted, setIsMicMuted] = useState(false)
   const [isVideoMuted, setIsVideoMuted] = useState(false)
-  const [remoteHasVideo, setRemoteHasVideo] = useState(false)
   const [callStatusText, setCallStatusText] = useState<string>(
     isCaller ? 'Sonnerie chez votre correspondant...' : 'Connexion à la salle...'
   )
@@ -54,22 +60,17 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   const [isJoined, setIsJoined] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const localVideoRef = useRef<HTMLDivElement>(null)
-  const remoteVideoRef = useRef<HTMLDivElement>(null)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const isLeavingRef = useRef(false)
-
-  // Durée de l'appel formatée (MM:SS)
+  // Formatage de la durée d'appel (MM:SS)
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Quitter et libérer proprement toutes les ressources Agora
-  const leaveChannel = useCallback(async () => {
-    if (isLeavingRef.current) return
-    isLeavingRef.current = true
+  // Nettoyage complet des pistes et du client Agora (idempotent, sans dépendances d'état)
+  const cleanupAgora = useCallback(async () => {
+    if (isCleaningUpRef.current) return
+    isCleaningUpRef.current = true
 
     if (timerRef.current) {
       clearInterval(timerRef.current)
@@ -77,54 +78,75 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     }
 
     try {
-      if (localAudioTrack) {
-        localAudioTrack.stop()
-        localAudioTrack.close()
+      if (audioTrackRef.current) {
+        audioTrackRef.current.stop()
+        audioTrackRef.current.close()
+        audioTrackRef.current = null
       }
-      if (localVideoTrack) {
-        localVideoTrack.stop()
-        localVideoTrack.close()
+
+      if (videoTrackRef.current) {
+        videoTrackRef.current.stop()
+        videoTrackRef.current.close()
+        videoTrackRef.current = null
       }
+
+      const client = clientRef.current
       if (client) {
-        await client.leave()
+        client.removeAllListeners()
+        if (
+          client.connectionState === 'CONNECTED' ||
+          client.connectionState === 'CONNECTING' ||
+          client.connectionState === 'RECONNECTING'
+        ) {
+          await client.leave()
+        }
+        clientRef.current = null
       }
     } catch (err) {
-      console.error('Erreur fermeture Agora:', err)
+      console.error('Erreur nettoyage Agora:', err)
     } finally {
-      onEndCall()
+      isJoinedRef.current = false
+      isCleaningUpRef.current = false
     }
-  }, [client, localAudioTrack, localVideoTrack, onEndCall])
+  }, [])
 
-  // 1. Initialisation du client Agora RTC
+  // Raccrocher déclenché par l'utilisateur
+  const handleHangup = useCallback(async () => {
+    if (isLeavingRef.current) return
+    isLeavingRef.current = true
+
+    await cleanupAgora()
+    onEndCall()
+  }, [cleanupAgora, onEndCall])
+
+  // 1. Initialisation unique du client Agora RTC et connexion au canal
   useEffect(() => {
-    let agoraClient: IAgoraRTCClient | null = null
-    let audioTrack: IMicrophoneAudioTrack | null = null
-    let videoTrack: ICameraVideoTrack | null = null
     let isCancelled = false
+    isLeavingRef.current = false
+    isCleaningUpRef.current = false
 
     async function initAgora() {
       try {
         const AgoraRTC = (await import('agora-rtc-sdk-ng')).default
-        AgoraRTC.setLogLevel(2) // Warnings and errors only
+        AgoraRTC.setLogLevel(2) // Warnings & errors uniquement
 
-        agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
-        setClient(agoraClient)
+        if (isCancelled) return
 
-        // Événement : l'utilisateur distant publie un flux (vidéo ou audio)
+        // Création de l'unique client Agora pour cet appel
+        const agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
+        clientRef.current = agoraClient
+
+        // Événement : l'utilisateur distant publie un flux vidéo ou audio
         agoraClient.on('user-published', async (user, mediaType) => {
-          if (!agoraClient) return
+          if (isCancelled || !clientRef.current) return
           await agoraClient.subscribe(user, mediaType)
+          if (isCancelled) return
+
           setRemoteUser(user)
 
           if (mediaType === 'video') {
             setRemoteHasVideo(true)
             setCallStatusText('En direct')
-            // Petit délai pour assurer que le conteneur DOM est monté
-            setTimeout(() => {
-              if (remoteVideoRef.current && user.videoTrack) {
-                user.videoTrack.play(remoteVideoRef.current)
-              }
-            }, 100)
           }
 
           if (mediaType === 'audio') {
@@ -132,7 +154,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           }
         })
 
-        // Événement : l'utilisateur distant coupe son flux
+        // Événement : l'utilisateur distant coupe sa caméra ou son micro
         agoraClient.on('user-unpublished', (user, mediaType) => {
           if (mediaType === 'video') {
             setRemoteHasVideo(false)
@@ -145,58 +167,60 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           setRemoteHasVideo(false)
           setCallStatusText('Votre correspondant a raccroché.')
           setTimeout(() => {
-            leaveChannel()
-          }, 1500)
+            handleHangup()
+          }, 1200)
         })
 
-        // Création des pistes locales Micro et Caméra
+        // Création des pistes audio et vidéo locales
         try {
           const [micTrack, camTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
-            {
-              encoderConfig: 'music_standard',
-            },
-            {
-              encoderConfig: '720p_1',
-              facingMode: 'user',
-            }
+            { encoderConfig: 'music_standard' },
+            { encoderConfig: '720p_1', facingMode: 'user' }
           )
-          audioTrack = micTrack
-          videoTrack = camTrack
 
           if (isCancelled) {
-            audioTrack.close()
-            videoTrack.close()
+            micTrack.stop()
+            micTrack.close()
+            camTrack.stop()
+            camTrack.close()
             return
           }
 
-          setLocalAudioTrack(audioTrack)
-          setLocalVideoTrack(videoTrack)
-
-          if (localVideoRef.current) {
-            videoTrack.play(localVideoRef.current)
-          }
+          audioTrackRef.current = micTrack
+          videoTrackRef.current = camTrack
+          setLocalTracksReady(true)
         } catch (mediaError: any) {
           console.error('Erreur accès micro/caméra:', mediaError)
-          setErrorMessage('Impossible d’accéder à la caméra ou au microphone.')
+          if (!isCancelled) {
+            setErrorMessage('Impossible d’accéder à la caméra ou au microphone.')
+          }
           return
         }
 
-        // Rejoindre le canal Agora avec le token de sécurité
+        // Rejoindre le canal Agora sécurisé avec token
         await agoraClient.join(appId, channelName, token, currentUserId)
-        if (isCancelled) return
+        if (isCancelled) {
+          await agoraClient.leave()
+          return
+        }
 
+        isJoinedRef.current = true
         setIsJoined(true)
 
-        // Publier nos pistes locales sur le canal
-        await agoraClient.publish([audioTrack, videoTrack])
+        // Publication des flux locaux
+        if (audioTrackRef.current && videoTrackRef.current) {
+          await agoraClient.publish([audioTrackRef.current, videoTrackRef.current])
+        }
 
-        setCallStatusText(
-          isCaller ? 'En attente de votre correspondant...' : 'Connecté — En direct'
-        )
+        if (!isCancelled) {
+          setCallStatusText(
+            isCaller ? 'Sonnerie chez votre correspondant...' : 'En direct'
+          )
+        }
       } catch (err: any) {
         console.error('Erreur initialisation Agora:', err)
         if (!isCancelled) {
-          setErrorMessage(err?.message || 'Échec de connexion au serveur d’appel.')
+          setErrorMessage(err?.message || 'Échec de la connexion à l’appel vidéo.')
         }
       }
     }
@@ -205,21 +229,25 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
     return () => {
       isCancelled = true
-      if (audioTrack) {
-        audioTrack.stop()
-        audioTrack.close()
-      }
-      if (videoTrack) {
-        videoTrack.stop()
-        videoTrack.close()
-      }
-      if (agoraClient) {
-        agoraClient.leave().catch(() => {})
-      }
+      cleanupAgora()
     }
-  }, [appId, channelName, currentUserId, isCaller, token, leaveChannel])
+  }, [appId, channelName, currentUserId, token, isCaller, cleanupAgora, handleHangup])
 
-  // 2. Chronomètre de l'appel dès qu'un flux distant ou la connexion est active
+  // 2. Rendu de la vidéo locale dès qu'elle est prête
+  useEffect(() => {
+    if (localTracksReady && videoTrackRef.current && localVideoRef.current && !isVideoMuted) {
+      videoTrackRef.current.play(localVideoRef.current)
+    }
+  }, [localTracksReady, isVideoMuted])
+
+  // 3. Rendu de la vidéo distante dès qu'elle est reçue
+  useEffect(() => {
+    if (remoteUser?.videoTrack && remoteHasVideo && remoteVideoRef.current) {
+      remoteUser.videoTrack.play(remoteVideoRef.current)
+    }
+  }, [remoteUser, remoteHasVideo])
+
+  // 4. Chronomètre de l'appel dès qu'on est en communication
   useEffect(() => {
     if (remoteUser || (!isCaller && isJoined)) {
       timerRef.current = setInterval(() => {
@@ -230,36 +258,37 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current)
+        timerRef.current = null
       }
     }
   }, [remoteUser, isCaller, isJoined])
 
-  // 3. Bascule du microphone (Mute / Unmute)
+  // 5. Bascule du microphone (Mute / Unmute)
   const toggleMic = async () => {
-    if (!localAudioTrack) return
+    if (!audioTrackRef.current) return
     const nextState = !isMicMuted
-    await localAudioTrack.setEnabled(!nextState)
+    await audioTrackRef.current.setEnabled(!nextState)
     setIsMicMuted(nextState)
   }
 
-  // 4. Bascule de la caméra (Video On / Off)
+  // 6. Bascule de la caméra (Video On / Off)
   const toggleVideo = async () => {
-    if (!localVideoTrack) return
+    if (!videoTrackRef.current) return
     const nextState = !isVideoMuted
-    await localVideoTrack.setEnabled(!nextState)
+    await videoTrackRef.current.setEnabled(!nextState)
     setIsVideoMuted(nextState)
   }
 
-  // 5. Gestion de la fermeture ou du changement d'onglet (raccrochage auto)
+  // 7. Gestion de la fermeture ou du changement d'onglet (raccrochage auto)
   useEffect(() => {
     const handleBeforeUnload = () => {
-      leaveChannel()
+      handleHangup()
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [leaveChannel])
+  }, [handleHangup])
 
   const partnerDisplayName = partner.first_name || 'Correspondant'
 
@@ -371,7 +400,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         {/* Bouton Raccrocher */}
         <button
           type="button"
-          onClick={leaveChannel}
+          onClick={handleHangup}
           className="w-16 h-16 rounded-full bg-gradient-to-tr from-red-600 to-rose-600 text-white flex items-center justify-center shadow-2xl shadow-red-950 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer border-2 border-white/20"
           title="Raccrocher l'appel"
           aria-label="Raccrocher"

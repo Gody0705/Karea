@@ -102,6 +102,11 @@ BEGIN
         RAISE EXCEPTION 'Cet appel n''est plus disponible.';
     END IF;
 
+    -- S'assurer que les deux profils sont bien en in_call = TRUE
+    UPDATE public.profiles
+    SET in_call = TRUE, updated_at = NOW()
+    WHERE id IN (v_session.caller_id, v_session.receiver_id);
+
     RETURN v_session;
 END;
 $$;
