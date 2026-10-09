@@ -21,6 +21,7 @@ import { createClient } from '@/lib/supabase/client'
 interface VideoCallRoomProps {
   session: CallSession
   partner: Profile
+  currentProfile: Profile
   isCaller: boolean
   token: string
   appId: string
@@ -32,6 +33,7 @@ interface VideoCallRoomProps {
 export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   session,
   partner,
+  currentProfile,
   isCaller,
   token,
   appId,
@@ -72,15 +74,18 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   // --- Gestion de la facturation & soldes en temps réel ---
   // Qui est l'homme (celui qui paie) et qui est la femme (celle qui reçoit) ?
-  // Dans un appel normal de la galerie, c'est l'homme qui appelle la femme.
-  const isMan = !isCaller ? partner.gender !== 'female' : partner.gender === 'female'
-  const womanProfile = partner.gender === 'female' ? partner : null
-  const ratePerMinute = Number(womanProfile?.price_per_minute ?? 25)
+  const isMan = currentProfile.gender === 'male'
+  const womanProfile = currentProfile.gender === 'female' ? currentProfile : partner
+  const ratePerMinute = Number(session.price_per_minute || womanProfile?.price_per_minute || 25)
   const ratePerSecond = ratePerMinute / 60
 
   // Soldes dynamiques
-  const [callerRemainingTokens, setCallerRemainingTokens] = useState<number | null>(null)
-  const [calleeEarnedTokens, setCalleeEarnedTokens] = useState<number>(0)
+  const [callerRemainingTokens, setCallerRemainingTokens] = useState<number | null>(
+    currentProfile.gender === 'male' ? Number(currentProfile.token_balance ?? 0) : null
+  )
+  const [calleeEarnedTokens, setCalleeEarnedTokens] = useState<number>(
+    currentProfile.gender === 'female' ? Number(currentProfile.earned_tokens ?? 0) : 0
+  )
   const [showLowBalanceWarning, setShowLowBalanceWarning] = useState(false)
   const [isCallTerminatedByBalance, setIsCallTerminatedByBalance] = useState(false)
 
@@ -372,20 +377,25 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     }
   }, [session.id, session.caller_id, session.receiver_id, supabase])
 
-  // 4.c Facturation à la seconde (prorata) déclenchée par l'appelant (l'homme)
+  // 4.c Facturation périodique (toutes les 4 secondes) déclenchée par l'appelant (l'homme)
+  const callDurationRef = useRef(0)
   useEffect(() => {
-    // Seul l'appelant déclenche la transaction RPC de facturation pour éviter les doublons
+    callDurationRef.current = callDuration
+  }, [callDuration])
+
+  useEffect(() => {
+    // Dès que les deux utilisateurs sont connectés (remoteUser présent) ou que l'appel est en direct
     if (!isCaller || !isJoined || !remoteUser) return
 
-    // Facturation toutes les 2 secondes (avec calcul exact prorata au prorata de la seconde via RPC)
     billingTimerRef.current = setInterval(async () => {
       if (isBillingTickRunningRef.current || isLeavingRef.current) return
       isBillingTickRunningRef.current = true
 
       try {
+        const currentElapsed = callDurationRef.current
         const { data, error } = await supabase.rpc('process_call_billing_tick', {
           p_session_id: session.id,
-          p_elapsed_seconds: callDuration,
+          p_elapsed_seconds: currentElapsed,
         })
 
         if (error) {
@@ -399,7 +409,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           setCallerRemainingTokens(remainingTokens)
           setCalleeEarnedTokens(earnedTokens)
 
-          // Vérifier si le solde approche de zéro (ex: moins de 15 secondes de conversation restante)
+          // Prévenir l'homme environ 15 secondes avant que le solde soit épuisé
           const secondsLeft = ratePerSecond > 0 ? remainingTokens / ratePerSecond : 999
           if (secondsLeft <= 15 && remainingTokens > 0) {
             setShowLowBalanceWarning(true)
@@ -407,7 +417,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
             setShowLowBalanceWarning(false)
           }
 
-          // Si solde épuisé ou should_hangup = true : couper proprement l'appel
+          // Couper l'appel des DEUX côtés quand le solde atteint 0
           if (data.should_hangup || remainingTokens <= 0) {
             setIsCallTerminatedByBalance(true)
             setCallStatusText('Solde de tokens épuisé. Fin de l’appel.')
@@ -417,7 +427,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
             }
             setTimeout(() => {
               handleHangup()
-            }, 1500)
+            }, 1200)
           }
         }
       } catch (err) {
@@ -425,7 +435,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
       } finally {
         isBillingTickRunningRef.current = false
       }
-    }, 2000)
+    }, 4000)
 
     return () => {
       if (billingTimerRef.current) {
@@ -433,7 +443,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         billingTimerRef.current = null
       }
     }
-  }, [isCaller, isJoined, remoteUser, callDuration, session.id, supabase, ratePerSecond, handleHangup])
+  }, [isCaller, isJoined, remoteUser, session.id, supabase, ratePerSecond, handleHangup])
 
   // 4.d Avertissement solde bas pour l'homme si non-appelant (si applicable)
   useEffect(() => {

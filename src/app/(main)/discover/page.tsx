@@ -555,10 +555,11 @@ export default function DiscoverGalleryPage() {
   return (
     <main className="min-h-screen w-full max-w-md mx-auto bg-[#0D0B0B] text-stone-100 flex flex-col relative pb-32 sm:pb-36">
       {/* 1. ÉCRAN D'APPEL VIDÉO EN COURS (AGORA RTC) */}
-      {activeCall && currentUser && (
+      {activeCall && currentUser && myProfile && (
         <VideoCallRoom
           session={activeCall.session}
           partner={activeCall.partner}
+          currentProfile={myProfile}
           isCaller={activeCall.isCaller}
           token={activeCall.token}
           appId={activeCall.appId}
