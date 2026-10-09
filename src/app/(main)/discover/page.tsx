@@ -300,7 +300,7 @@ export default function DiscoverGalleryPage() {
             setIncomingCall((curr) => (curr?.session.id === session.id ? null : curr))
           }
 
-          // C. Mon appel en cours a été terminé par l'autre participant
+          // C. Mon appel en cours a été terminé par l'autre participant ou solde épuisé
           if (
             activeCallRef.current &&
             activeCallRef.current.session.id === session.id &&
@@ -308,6 +308,27 @@ export default function DiscoverGalleryPage() {
           ) {
             showToast('L’appel est terminé.')
             setActiveCall(null)
+          }
+
+          // D. L'appel a été décroché par le correspondant (passage à in_progress)
+          if (
+            activeCallRef.current &&
+            activeCallRef.current.session.id === session.id &&
+            session.status === 'in_progress'
+          ) {
+            setActiveCall((curr) =>
+              curr
+                ? {
+                    ...curr,
+                    session: {
+                      ...curr.session,
+                      status: 'in_progress',
+                      started_at: session.started_at,
+                      duration_seconds: session.duration_seconds,
+                    },
+                  }
+                : null
+            )
           }
         }
       )

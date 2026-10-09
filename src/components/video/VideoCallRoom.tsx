@@ -66,9 +66,9 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   const [isVideoMuted, setIsVideoMuted] = useState(false)
   const [isSwapped, setIsSwapped] = useState(false) // Permet d'inverser vidéo principale / vignette PiP
   const [callStatusText, setCallStatusText] = useState<string>(
-    isCaller ? 'Sonnerie chez votre correspondant...' : 'Connexion à la salle...'
+    session.status === 'in_progress' ? 'En direct' : (isCaller ? 'Sonnerie chez votre correspondant...' : 'Connexion à la salle...')
   )
-  const [callDuration, setCallDuration] = useState(0)
+  const [callDuration, setCallDuration] = useState(Number(session.duration_seconds || 0))
   const [isJoined, setIsJoined] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -292,10 +292,14 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   // 4. Chronomètre de l'appel
   useEffect(() => {
-    if (remoteUser || (!isCaller && isJoined)) {
-      timerRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1)
-      }, 1000)
+    const isCallLive = !!remoteUser || session.status === 'in_progress' || (!isCaller && isJoined)
+    if (isCallLive) {
+      setCallStatusText('En direct')
+      if (!timerRef.current) {
+        timerRef.current = setInterval(() => {
+          setCallDuration((prev) => prev + 1)
+        }, 1000)
+      }
     }
 
     return () => {
@@ -304,7 +308,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         timerRef.current = null
       }
     }
-  }, [remoteUser, isCaller, isJoined])
+  }, [remoteUser, isCaller, isJoined, session.status])
 
   // 4.b Chargement initial des soldes & écoute Realtime
   useEffect(() => {
@@ -377,17 +381,18 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     }
   }, [session.id, session.caller_id, session.receiver_id, supabase])
 
-  // 4.c Facturation périodique (toutes les 4 secondes) déclenchée par l'appelant (l'homme)
+  // 4.c Facturation périodique (toutes les 3 secondes) déclenchée par l'appelant (l'homme qui paie)
   const callDurationRef = useRef(0)
   useEffect(() => {
     callDurationRef.current = callDuration
   }, [callDuration])
 
   useEffect(() => {
-    // Dès que les deux utilisateurs sont connectés (remoteUser présent) ou que l'appel est en direct
-    if (!isCaller || !isJoined || !remoteUser) return
+    // Débit actif dès que l'appel est en direct (décroché par la femme ou flux connecté)
+    const isCallLive = isCaller && isJoined && (session.status === 'in_progress' || !!remoteUser)
+    if (!isCallLive) return
 
-    billingTimerRef.current = setInterval(async () => {
+    const tickBilling = async () => {
       if (isBillingTickRunningRef.current || isLeavingRef.current) return
       isBillingTickRunningRef.current = true
 
@@ -435,7 +440,9 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
       } finally {
         isBillingTickRunningRef.current = false
       }
-    }, 4000)
+    }
+
+    billingTimerRef.current = setInterval(tickBilling, 3000)
 
     return () => {
       if (billingTimerRef.current) {
@@ -443,7 +450,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         billingTimerRef.current = null
       }
     }
-  }, [isCaller, isJoined, remoteUser, session.id, supabase, ratePerSecond, handleHangup])
+  }, [isCaller, isJoined, remoteUser, session.status, session.id, supabase, ratePerSecond, handleHangup])
 
   // 4.d Avertissement solde bas pour l'homme si non-appelant (si applicable)
   useEffect(() => {
