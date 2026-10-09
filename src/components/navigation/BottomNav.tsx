@@ -1,16 +1,27 @@
-'use client'
-
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Tv, Globe, MessageCircle, User } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { useUnreadMessagesCount } from '@/lib/hooks/useUnreadMessagesCount'
 
 interface BottomNavProps {
   unreadMessagesCount?: number
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ unreadMessagesCount = 0 }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ unreadMessagesCount }) => {
   const pathname = usePathname()
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id)
+    })
+  }, [])
+
+  const liveUnreadCount = useUnreadMessagesCount(currentUserId)
+  const finalBadgeCount = unreadMessagesCount !== undefined ? unreadMessagesCount : liveUnreadCount
 
   const navItems = [
     {
@@ -30,7 +41,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ unreadMessagesCount = 0 })
       href: '/messages',
       icon: MessageCircle,
       active: pathname.startsWith('/messages'),
-      badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
+      badge: finalBadgeCount > 0 ? finalBadgeCount : undefined,
     },
     {
       label: 'Profil',

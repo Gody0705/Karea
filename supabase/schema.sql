@@ -194,6 +194,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- 7.3 Marquer les messages d'une conversation comme lus
+CREATE OR REPLACE FUNCTION public.mark_messages_as_read(p_conversation_id UUID)
+RETURNS void AS $$
+BEGIN
+    UPDATE public.messages
+    SET is_read = TRUE
+    WHERE conversation_id = p_conversation_id
+      AND receiver_id = auth.uid()
+      AND is_read = FALSE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- ------------------------------------------------------------------------------
 -- 8. FILE D'ATTENTE POUR LE SALON AU HASARD (RANDOM VIDEO CALL)
 -- ------------------------------------------------------------------------------
@@ -472,8 +484,12 @@ CREATE POLICY "Les participants peuvent initialiser une conversation"
 ON public.conversations FOR INSERT TO authenticated
 WITH CHECK (
     (auth.uid() = man_id OR auth.uid() = woman_id)
-    AND is_unlocked_by_man = FALSE
 );
+
+DROP POLICY IF EXISTS "Les participants peuvent modifier leur conversation" ON public.conversations;
+CREATE POLICY "Les participants peuvent modifier leur conversation"
+ON public.conversations FOR UPDATE TO authenticated
+USING (auth.uid() = man_id OR auth.uid() = woman_id);
 
 -- 11.3 Messages (RLS ASYMÉTRIQUE STRICTE)
 DROP POLICY IF EXISTS "Les participants lisent les messages de leur conversation" ON public.messages;
@@ -502,6 +518,33 @@ WITH CHECK (
         )
     )
 );
+
+DROP POLICY IF EXISTS "Les destinataires peuvent marquer les messages comme lus" ON public.messages;
+CREATE POLICY "Les destinataires peuvent marquer les messages comme lus"
+ON public.messages FOR UPDATE TO authenticated
+USING (auth.uid() = receiver_id)
+WITH CHECK (auth.uid() = receiver_id);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'conversations'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.conversations;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'messages'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+  END IF;
+END $$;
 
 -- 11.4 Random Queue
 DROP POLICY IF EXISTS "Gestion personnelle de la file d'attente aléatoire" ON public.random_call_queue;

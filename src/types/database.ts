@@ -271,6 +271,12 @@ export interface Database {
         }
         Returns: boolean
       }
+      mark_messages_as_read: {
+        Args: {
+          p_conversation_id: string
+        }
+        Returns: void
+      }
     }
     Enums: {
       [_ in never]: never
