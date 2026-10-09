@@ -47,11 +47,10 @@ ALTER TABLE public.profiles ALTER COLUMN birthdate DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN city DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN country DROP NOT NULL;
 ALTER TABLE public.profiles ALTER COLUMN first_name SET DEFAULT 'User';
-ALTER TABLE public.profiles ALTER COLUMN status SET DEFAULT 'offline';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'offline' CHECK (status IN ('online', 'busy', 'offline', 'in_call'));
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS price_per_minute INTEGER NOT NULL DEFAULT 25 CHECK (price_per_minute >= 0);
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS token_balance NUMERIC(12, 4) NOT NULL DEFAULT 100 CHECK (token_balance >= 0);
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS token_balance NUMERIC(12, 4) NOT NULL DEFAULT 0 CHECK (token_balance >= 0);
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS earned_tokens NUMERIC(12, 4) NOT NULL DEFAULT 0 CHECK (earned_tokens >= 0);
 
 CREATE INDEX IF NOT EXISTS idx_profiles_gender_status ON public.profiles(gender, status);

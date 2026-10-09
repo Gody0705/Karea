@@ -53,21 +53,21 @@ VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- 2. COLONNES DE SOLDES SUR PROFILES
--- token_balance: solde de tokens utilisable par l'homme (ou n'importe quel profil)
--- earned_tokens: solde de tokens gagnés par la femme
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS token_balance NUMERIC(12, 4) NOT NULL DEFAULT 100 CHECK (token_balance >= 0);
+-- token_balance: solde de tokens utilisable (par défaut 0 pour les nouveaux comptes)
+-- earned_tokens: solde de tokens gagnés par la femme (par défaut 0)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS token_balance NUMERIC(12, 4) NOT NULL DEFAULT 0 CHECK (token_balance >= 0);
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS earned_tokens NUMERIC(12, 4) NOT NULL DEFAULT 0 CHECK (earned_tokens >= 0);
 
--- Mettre à jour les femmes pour avoir par défaut le tarif de départ de 25 tokens/min
--- si leur tarif était l'ancien 100 par défaut
+-- S'assurer que le DEFAULT de token_balance est bien 0
+ALTER TABLE public.profiles ALTER COLUMN token_balance SET DEFAULT 0;
+
+-- S'assurer que le DEFAULT de price_per_minute est 25
+ALTER TABLE public.profiles ALTER COLUMN price_per_minute SET DEFAULT 25;
+
+-- METTRE price_per_minute À 25 POUR TOUTES LES FEMMES EXISTANTES (tarif de départ)
 UPDATE public.profiles 
 SET price_per_minute = 25 
-WHERE gender = 'female' AND (price_per_minute = 100 OR price_per_minute IS NULL OR price_per_minute < 25);
-
--- Pour les hommes, s'assurer qu'ils ont un solde de départ (par exemple 100 tokens de bienvenue)
-UPDATE public.profiles
-SET token_balance = 150
-WHERE gender = 'male' AND token_balance < 25;
+WHERE gender = 'female';
 
 -- 3. TABLE DES TRANSACTIONS FINANCIÈRES (transactions)
 CREATE TABLE IF NOT EXISTS public.transactions (
