@@ -10,6 +10,7 @@ import {
   PhoneOff,
   AlertTriangle,
   MapPin,
+  ArrowLeftRight,
 } from 'lucide-react'
 import type { Profile, CallSession } from '@/types/database'
 import Image from 'next/image'
@@ -34,7 +35,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   currentUserId,
   onEndCall,
 }) => {
-  // Références d'instances Agora (stockées en useRef pour ne JAMAIS redéclencher les useEffect)
+  // Références d'instances Agora
   const clientRef = useRef<IAgoraRTCClient | null>(null)
   const audioTrackRef = useRef<IMicrophoneAudioTrack | null>(null)
   const videoTrackRef = useRef<ICameraVideoTrack | null>(null)
@@ -53,6 +54,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   const [localTracksReady, setLocalTracksReady] = useState(false)
   const [isMicMuted, setIsMicMuted] = useState(false)
   const [isVideoMuted, setIsVideoMuted] = useState(false)
+  const [isSwapped, setIsSwapped] = useState(false) // Permet d'inverser vidéo principale / vignette PiP
   const [callStatusText, setCallStatusText] = useState<string>(
     isCaller ? 'Sonnerie chez votre correspondant...' : 'Connexion à la salle...'
   )
@@ -67,7 +69,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Nettoyage complet des pistes et du client Agora (idempotent, sans dépendances d'état)
+  // Nettoyage complet des pistes et du client Agora
   const cleanupAgora = useCallback(async () => {
     if (isCleaningUpRef.current) return
     isCleaningUpRef.current = true
@@ -119,7 +121,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     onEndCall()
   }, [cleanupAgora, onEndCall])
 
-  // 1. Initialisation unique du client Agora RTC et connexion au canal
+  // 1. Initialisation unique du client Agora RTC
   useEffect(() => {
     let isCancelled = false
     isLeavingRef.current = false
@@ -128,15 +130,13 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     async function initAgora() {
       try {
         const AgoraRTC = (await import('agora-rtc-sdk-ng')).default
-        AgoraRTC.setLogLevel(2) // Warnings & errors uniquement
+        AgoraRTC.setLogLevel(2)
 
         if (isCancelled) return
 
-        // Création de l'unique client Agora pour cet appel
         const agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
         clientRef.current = agoraClient
 
-        // Événement : l'utilisateur distant publie un flux vidéo ou audio
         agoraClient.on('user-published', async (user, mediaType) => {
           if (isCancelled || !clientRef.current) return
           await agoraClient.subscribe(user, mediaType)
@@ -154,14 +154,12 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           }
         })
 
-        // Événement : l'utilisateur distant coupe sa caméra ou son micro
         agoraClient.on('user-unpublished', (user, mediaType) => {
           if (mediaType === 'video') {
             setRemoteHasVideo(false)
           }
         })
 
-        // Événement : l'utilisateur distant quitte l'appel
         agoraClient.on('user-left', () => {
           setRemoteUser(null)
           setRemoteHasVideo(false)
@@ -171,7 +169,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           }, 1200)
         })
 
-        // Création résiliente des pistes audio et vidéo (ne plante pas si une caméra ou un micro est absent)
+        // Création résiliente des pistes audio et vidéo
         let micTrack: IMicrophoneAudioTrack | null = null
         let camTrack: ICameraVideoTrack | null = null
 
@@ -209,7 +207,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         if (camTrack) videoTrackRef.current = camTrack
         setLocalTracksReady(true)
 
-        // Rejoindre le canal Agora sécurisé avec token
+        // Rejoindre le canal
         await agoraClient.join(appId, channelName, token, currentUserId)
         if (isCancelled) {
           await agoraClient.leave()
@@ -246,21 +244,21 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     }
   }, [appId, channelName, currentUserId, token, isCaller, cleanupAgora, handleHangup])
 
-  // 2. Rendu de la vidéo locale dès qu'elle est prête
+  // 2. Rendu de la vidéo locale
   useEffect(() => {
     if (localTracksReady && videoTrackRef.current && localVideoRef.current && !isVideoMuted) {
       videoTrackRef.current.play(localVideoRef.current)
     }
   }, [localTracksReady, isVideoMuted])
 
-  // 3. Rendu de la vidéo distante dès qu'elle est reçue
+  // 3. Rendu de la vidéo distante
   useEffect(() => {
     if (remoteUser?.videoTrack && remoteHasVideo && remoteVideoRef.current) {
       remoteUser.videoTrack.play(remoteVideoRef.current)
     }
   }, [remoteUser, remoteHasVideo])
 
-  // 4. Chronomètre de l'appel dès qu'on est en communication
+  // 4. Chronomètre de l'appel
   useEffect(() => {
     if (remoteUser || (!isCaller && isJoined)) {
       timerRef.current = setInterval(() => {
@@ -276,7 +274,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     }
   }, [remoteUser, isCaller, isJoined])
 
-  // 5. Bascule du microphone (Mute / Unmute)
+  // 5. Bascule du microphone
   const toggleMic = async () => {
     if (!audioTrackRef.current) return
     const nextState = !isMicMuted
@@ -284,7 +282,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     setIsMicMuted(nextState)
   }
 
-  // 6. Bascule de la caméra (Video On / Off)
+  // 6. Bascule de la caméra
   const toggleVideo = async () => {
     if (!videoTrackRef.current) return
     const nextState = !isVideoMuted
@@ -292,7 +290,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     setIsVideoMuted(nextState)
   }
 
-  // 7. Gestion de la fermeture ou du changement d'onglet (raccrochage auto)
+  // 7. Gestion de la fermeture ou du changement d'onglet
   useEffect(() => {
     const handleBeforeUnload = () => {
       handleHangup()
@@ -305,11 +303,17 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   const partnerDisplayName = partner.first_name || 'Correspondant'
 
+  // Classes de disposition pour l'inversion des vidéos (Plein écran vs Vignette PiP)
+  const fullScreenClasses = 'absolute inset-0 z-0 bg-stone-950 flex items-center justify-center transition-all duration-300'
+  const pipClasses = 'absolute top-4 right-4 z-20 w-28 sm:w-36 aspect-[3/4] rounded-2xl overflow-hidden bg-stone-900 border-2 border-stone-700/80 shadow-2xl shadow-black/80 cursor-pointer group transition-all duration-300 hover:scale-105 active:scale-95'
+
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between overflow-hidden animate-in fade-in duration-300">
-      {/* 1. ÉCRAN PRINCIPAL : VIDÉO DISTANTE EN GRAND */}
-      <div className="absolute inset-0 z-0 bg-stone-950 flex items-center justify-center">
-        {/* Conteneur DOM pour la vidéo Agora de l'autre personne */}
+      {/* 1. CONTENEUR VIDÉO DISTANTE (Correspondant) */}
+      <div
+        className={!isSwapped ? fullScreenClasses : pipClasses}
+        onClick={isSwapped ? () => setIsSwapped(false) : undefined}
+      >
         <div
           ref={remoteVideoRef}
           className={`w-full h-full object-cover transition-opacity duration-300 ${
@@ -317,11 +321,15 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           }`}
         />
 
-        {/* Fallback quand l'autre utilisateur n'a pas encore activé sa vidéo ou est en attente */}
+        {/* Fallback quand l'autre utilisateur n'a pas activé sa vidéo ou est en attente */}
         {!remoteHasVideo && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-[#1E1110] via-stone-950 to-black">
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-gradient-to-b from-[#1E1110] via-stone-950 to-black text-center">
             <div className="relative">
-              <div className="w-32 h-32 rounded-full border-2 border-[#E05A47]/40 overflow-hidden relative shadow-2xl shadow-red-950/80">
+              <div
+                className={`rounded-full border-2 border-[#E05A47]/40 overflow-hidden relative shadow-2xl shadow-red-950/80 mx-auto ${
+                  !isSwapped ? 'w-28 h-28 sm:w-32 sm:h-32' : 'w-12 h-12'
+                }`}
+              >
                 {partner.avatar_url ? (
                   <Image
                     src={partner.avatar_url}
@@ -330,51 +338,73 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
                     className="object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-tr from-[#E05A47] to-[#F59E0B] flex items-center justify-center text-4xl font-extrabold text-white">
+                  <div className="w-full h-full bg-gradient-to-tr from-[#E05A47] to-[#F59E0B] flex items-center justify-center font-extrabold text-white text-xl">
                     {partnerDisplayName.charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
-              {/* Onde de pulsation */}
-              <div className="absolute -inset-2 rounded-full border border-[#E05A47] animate-ping opacity-30 pointer-events-none" />
+              {!isSwapped && (
+                <div className="absolute -inset-2 rounded-full border border-[#E05A47] animate-ping opacity-30 pointer-events-none" />
+              )}
             </div>
 
-            <h2 className="text-xl font-black text-white mt-6 drop-shadow">
-              {partnerDisplayName}
-            </h2>
-            {partner.city && (
-              <p className="text-xs text-stone-300 mt-1 flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-[#E05A47]" />
-                {partner.city}
-              </p>
+            {!isSwapped && (
+              <>
+                <h2 className="text-xl font-black text-white mt-5 drop-shadow">
+                  {partnerDisplayName}
+                </h2>
+                {partner.city && (
+                  <p className="text-xs text-stone-300 mt-1 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-[#E05A47]" />
+                    {partner.city}
+                  </p>
+                )}
+
+                <div className="mt-4 px-4 py-1.5 rounded-full bg-stone-900/80 border border-stone-800 backdrop-blur-md flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="text-xs text-stone-200 font-medium">{callStatusText}</span>
+                </div>
+              </>
             )}
+          </div>
+        )}
 
-            <div className="mt-4 px-4 py-1.5 rounded-full bg-stone-900/80 border border-stone-800 backdrop-blur-md flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-xs text-stone-200 font-medium">{callStatusText}</span>
-            </div>
+        {/* Badge d'identification si la vidéo distante est en vignette PiP */}
+        {isSwapped && (
+          <div className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[9px] font-bold text-white flex items-center gap-1">
+            <span className="truncate max-w-[70px]">{partnerDisplayName}</span>
+            <ArrowLeftRight className="w-2.5 h-2.5 opacity-60" />
           </div>
         )}
       </div>
 
-      {/* 2. VIDÉO LOCALE EN PETIT (PIP - Coin supérieur droit) */}
-      <div className="absolute top-4 right-4 z-20 w-28 sm:w-36 aspect-[3/4] rounded-2xl overflow-hidden bg-stone-900 border-2 border-stone-700/80 shadow-2xl shadow-black/80">
+      {/* 2. CONTENEUR VIDÉO LOCALE (Moi) */}
+      <div
+        className={isSwapped ? fullScreenClasses : pipClasses}
+        onClick={!isSwapped ? () => setIsSwapped(true) : undefined}
+      >
         <div
           ref={localVideoRef}
           className={`w-full h-full object-cover ${isVideoMuted ? 'opacity-0' : 'opacity-100'}`}
         />
+
         {isVideoMuted && (
           <div className="absolute inset-0 bg-stone-900 flex flex-col items-center justify-center p-2 text-stone-400">
-            <VideoOff className="w-6 h-6 text-stone-500 mb-1" />
-            <span className="text-[9px] font-medium text-center">Caméra éteinte</span>
+            <VideoOff className={`${isSwapped ? 'w-10 h-10' : 'w-5 h-5'} text-stone-500 mb-1`} />
+            <span className={`${isSwapped ? 'text-xs' : 'text-[9px]'} font-medium text-center`}>
+              Caméra éteinte
+            </span>
           </div>
         )}
-        <div className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[9px] font-bold text-white">
-          Moi {isMicMuted ? '🔇' : ''}
+
+        {/* Badge d'identification */}
+        <div className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[9px] font-bold text-white flex items-center gap-1">
+          <span>Moi {isMicMuted ? '🔇' : ''}</span>
+          {!isSwapped && <ArrowLeftRight className="w-2.5 h-2.5 opacity-60" />}
         </div>
       </div>
 
-      {/* 3. EN-TÊTE : DURÉE ET INFORMATIONS */}
+      {/* 3. EN-TÊTE : DURÉE ET MESSAGES */}
       <header className="relative z-10 px-5 pt-5 flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-3">
           <div className="px-3.5 py-1.5 rounded-2xl bg-black/60 backdrop-blur-xl border border-white/10 text-white flex items-center gap-2 shadow-lg">

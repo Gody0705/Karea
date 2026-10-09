@@ -13,7 +13,7 @@ export default function RandomCallPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative overflow-hidden pb-20">
+    <main className="h-dvh h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative overflow-hidden pb-16">
       {/* Halos lumineux d'ambiance */}
       <div className="absolute top-1/4 -left-24 w-80 h-80 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/3 -right-24 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />

@@ -2,17 +2,23 @@
 
 import React from 'react'
 import Image from 'next/image'
-import { Video, Sparkles, MapPin } from 'lucide-react'
-import type { Profile, UserStatus } from '@/types/database'
+import { Video, Sparkles, MapPin, Heart, Plus, Check } from 'lucide-react'
+import type { Profile } from '@/types/database'
 
 interface GalleryProfileCardProps {
   profile: Profile
+  isFollowed?: boolean
+  canCall?: boolean
   onCallClick: (profile: Profile) => void
+  onToggleFollow?: (profile: Profile) => void
 }
 
 export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
   profile,
+  isFollowed = false,
+  canCall = true,
   onCallClick,
+  onToggleFollow,
 }) => {
   const isOccupied = profile.in_call || profile.status === 'busy' || profile.status === 'in_call'
   const isOnline = profile.status === 'online' && !isOccupied
@@ -73,18 +79,44 @@ export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
       <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/70 via-black/30 to-transparent pointer-events-none" />
       <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
 
-      {/* Badge de statut en haut à gauche */}
-      <div className="relative z-10 p-3 flex justify-between items-start">
+      {/* En-tête de carte : Badge de statut à gauche + Bouton Suivre à droite */}
+      <div className="relative z-10 p-2.5 flex justify-between items-center">
+        {/* Badge de statut */}
         <div
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border backdrop-blur-md text-[10px] font-bold tracking-wide ${badge.bgColor}`}
+          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border backdrop-blur-md text-[9px] font-bold tracking-wide ${badge.bgColor}`}
         >
           <span
-            className={`w-2 h-2 rounded-full ${badge.dotColor} ${
+            className={`w-1.5 h-1.5 rounded-full ${badge.dotColor} ${
               badge.animate ? 'animate-pulse' : ''
             }`}
           />
           <span>{badge.label}</span>
         </div>
+
+        {/* Bouton Suivre (Cœur / +) */}
+        {onToggleFollow && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleFollow(profile)
+            }}
+            className={`px-2 py-1 rounded-full border backdrop-blur-md text-[10px] font-bold flex items-center gap-1 transition-all duration-200 cursor-pointer shadow-md active:scale-95 ${
+              isFollowed
+                ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 hover:bg-rose-500/30'
+                : 'bg-black/50 border-white/20 text-white hover:bg-white/20'
+            }`}
+            title={isFollowed ? 'Ne plus suivre' : 'Suivre ce profil'}
+            aria-label={isFollowed ? 'Ne plus suivre' : 'Suivre'}
+          >
+            <Heart
+              className={`w-3 h-3 transition-colors ${
+                isFollowed ? 'text-rose-400 fill-rose-400' : 'text-white'
+              }`}
+            />
+            <span>{isFollowed ? 'Suivi' : 'Suivre'}</span>
+          </button>
+        )}
       </div>
 
       {/* Informations et bouton d'appel en bas */}
@@ -101,16 +133,18 @@ export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
           )}
         </div>
 
-        {/* Bouton rond appel vidéo */}
-        <button
-          type="button"
-          onClick={() => onCallClick(profile)}
-          className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#E05A47] to-[#F59E0B] text-white flex items-center justify-center shadow-lg shadow-red-950/60 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer shrink-0 border border-white/20"
-          title="Lancer un appel vidéo"
-          aria-label={`Appeler ${displayName}`}
-        >
-          <Video className="w-4 h-4" />
-        </button>
+        {/* Bouton rond appel vidéo — UNIQUEMENT pour les comptes hommes (canCall = true) */}
+        {canCall && (
+          <button
+            type="button"
+            onClick={() => onCallClick(profile)}
+            className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#E05A47] to-[#F59E0B] text-white flex items-center justify-center shadow-lg shadow-red-950/60 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer shrink-0 border border-white/20"
+            title="Lancer un appel vidéo"
+            aria-label={`Appeler ${displayName}`}
+          >
+            <Video className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   )

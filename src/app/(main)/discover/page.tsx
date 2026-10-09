@@ -21,7 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
-import type { Profile, CallSession } from '@/types/database'
+import type { Profile, CallSession, Follow } from '@/types/database'
 
 interface ActiveCallState {
   session: CallSession
@@ -46,6 +46,7 @@ export default function DiscoverGalleryPage() {
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null)
   const [myProfile, setMyProfile] = useState<Profile | null>(null)
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSubTab, setActiveSubTab] = useState<GallerySubTab>('popular')
   const [isLoading, setIsLoading] = useState(true)
@@ -89,7 +90,7 @@ export default function DiscoverGalleryPage() {
     })
   }, [])
 
-  // 1. Initialisation de la session et présence
+  // 1. Initialisation de la session, présence et profils suivis
   useEffect(() => {
     let isMounted = true
 
@@ -125,8 +126,7 @@ export default function DiscoverGalleryPage() {
 
         setMyProfile(profile)
 
-        // Nettoyage des appels précédents éventuellement orphelins (crash, perte réseau)
-        // et passage du profil à online
+        // Nettoyage des appels orphelins éventuels et passage à online
         try {
           await supabase.rpc('reset_my_call_state')
         } catch {
@@ -141,6 +141,17 @@ export default function DiscoverGalleryPage() {
             last_seen_at: new Date().toISOString(),
           })
           .eq('id', user.id)
+
+        // Charger les profils suivis par cet utilisateur
+        const { data: followsData } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', user.id)
+
+        if (isMounted && followsData) {
+          const ids = new Set<string>(followsData.map((f: { following_id: string }) => f.following_id))
+          setFollowedUserIds(ids)
+        }
 
         // Déterminer le genre opposé
         const oppositeGender = profile.gender === 'male' ? 'female' : 'male'
@@ -305,7 +316,55 @@ export default function DiscoverGalleryPage() {
     }
   }, [currentUser, supabase, showToast])
 
-  // 4. Lancer un appel vidéo vers un profil
+  // 4. Suivre / Ne plus suivre un profil
+  const handleToggleFollow = async (targetProfile: Profile) => {
+    if (!currentUser) return
+
+    const isCurrentlyFollowed = followedUserIds.has(targetProfile.id)
+    const targetName = targetProfile.first_name || 'cet utilisateur'
+
+    // Mise à jour optimiste de l'état
+    setFollowedUserIds((prev) => {
+      const next = new Set(prev)
+      if (isCurrentlyFollowed) {
+        next.delete(targetProfile.id)
+      } else {
+        next.add(targetProfile.id)
+      }
+      return next
+    })
+
+    try {
+      if (isCurrentlyFollowed) {
+        await supabase
+          .from('follows')
+          .delete()
+          .match({ follower_id: currentUser.id, following_id: targetProfile.id })
+
+        showToast(`Vous ne suivez plus ${targetName}.`)
+      } else {
+        await supabase
+          .from('follows')
+          .insert({ follower_id: currentUser.id, following_id: targetProfile.id })
+
+        showToast(`Vous suivez désormais ${targetName} !`)
+      }
+    } catch (err) {
+      console.error('Erreur follow:', err)
+      // Rollback
+      setFollowedUserIds((prev) => {
+        const rollback = new Set(prev)
+        if (isCurrentlyFollowed) {
+          rollback.add(targetProfile.id)
+        } else {
+          rollback.delete(targetProfile.id)
+        }
+        return rollback
+      })
+    }
+  }
+
+  // 5. Lancer un appel vidéo vers un profil (réservé aux comptes hommes)
   const handleCallClick = async (callee: Profile) => {
     if (!currentUser || !myProfile) return
 
@@ -327,7 +386,7 @@ export default function DiscoverGalleryPage() {
     setIsCalling(true)
 
     try {
-      // 1. Appel de la fonction RPC pour créer la session d'appel et passer les statuts en in_call = true
+      // 1. Appel RPC
       const { data: sessionData, error: sessionError } = await supabase.rpc(
         'start_direct_call',
         {
@@ -342,7 +401,7 @@ export default function DiscoverGalleryPage() {
       const createdSession = sessionData as CallSession
       const channelName = createdSession.channel_name || `karea_${createdSession.id}`
 
-      // 2. Obtenir le token Agora RTC sécurisé depuis l'Edge Function agora-token
+      // 2. Token Agora RTC
       const agoraData = await fetchAgoraToken(supabase, channelName)
 
       // 3. Ouvrir l'écran de visioconférence
@@ -362,7 +421,7 @@ export default function DiscoverGalleryPage() {
     }
   }
 
-  // 5. Accepter un appel entrant
+  // 6. Accepter un appel entrant
   const handleAcceptIncomingCall = async () => {
     if (!incomingCall || !currentUser) return
 
@@ -372,7 +431,6 @@ export default function DiscoverGalleryPage() {
     setIsCalling(true)
 
     try {
-      // Confirmer l'acceptation via RPC
       const { data: sessionData, error: acceptError } = await supabase.rpc(
         'accept_direct_call',
         {
@@ -387,7 +445,6 @@ export default function DiscoverGalleryPage() {
       const activeSession = sessionData as CallSession
       const channelName = activeSession.channel_name || `karea_${activeSession.id}`
 
-      // Obtenir le token Agora RTC
       const agoraData = await fetchAgoraToken(supabase, channelName)
 
       setActiveCall({
@@ -406,7 +463,7 @@ export default function DiscoverGalleryPage() {
     }
   }
 
-  // 6. Refuser un appel entrant
+  // 7. Refuser un appel entrant
   const handleRejectIncomingCall = async () => {
     if (!incomingCall) return
     const sessionId = incomingCall.session.id
@@ -422,7 +479,7 @@ export default function DiscoverGalleryPage() {
     }
   }
 
-  // 7. Terminer un appel en cours (raccrocher)
+  // 8. Terminer un appel en cours (raccrocher)
   const handleEndActiveCall = async () => {
     const currentActive = activeCallRef.current
     setActiveCall(null)
@@ -440,19 +497,26 @@ export default function DiscoverGalleryPage() {
   }
 
   // Filtrage par recherche
-  const filteredProfiles = profiles.filter((p) => {
-    const query = searchQuery.toLowerCase().trim()
-    if (!query) return true
-    const nameMatch = p.first_name?.toLowerCase().includes(query)
-    const cityMatch = p.city?.toLowerCase().includes(query)
-    const countryMatch = p.country?.toLowerCase().includes(query)
-    return nameMatch || cityMatch || countryMatch
-  })
+  const filterList = (list: Profile[]) => {
+    return list.filter((p) => {
+      const query = searchQuery.toLowerCase().trim()
+      if (!query) return true
+      const nameMatch = p.first_name?.toLowerCase().includes(query)
+      const cityMatch = p.city?.toLowerCase().includes(query)
+      const countryMatch = p.country?.toLowerCase().includes(query)
+      return nameMatch || cityMatch || countryMatch
+    })
+  }
+
+  const filteredPopularProfiles = filterList(profiles)
+  const followedProfiles = profiles.filter((p) => followedUserIds.has(p.id))
+  const filteredFollowedProfiles = filterList(followedProfiles)
 
   const onlineCount = profiles.filter(
     (p) => p.status === 'online' && !p.in_call
   ).length
   const oppositeGenderLabel = myProfile?.gender === 'female' ? 'Hommes' : 'Femmes'
+  const isMan = myProfile?.gender === 'male' // Les hommes voient le bouton d'appel, les femmes non
 
   if (isLoading) {
     return (
@@ -466,8 +530,8 @@ export default function DiscoverGalleryPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative overflow-hidden pb-20">
-      {/* 1. ÉCRAN D'APPEL VIDÉO EN COURS (AGORA RTC - Plein écran) */}
+    <main className="min-h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative pb-28">
+      {/* 1. ÉCRAN D'APPEL VIDÉO EN COURS (AGORA RTC) */}
       {activeCall && currentUser && (
         <VideoCallRoom
           session={activeCall.session}
@@ -527,7 +591,7 @@ export default function DiscoverGalleryPage() {
       )}
 
       {/* En-tête de la Galerie */}
-      <header className="sticky top-0 z-40 bg-[#0D0B0B]/85 backdrop-blur-md px-5 pt-4 pb-2 border-b border-stone-800/80 space-y-3">
+      <header className="sticky top-0 z-30 bg-[#0D0B0B]/85 backdrop-blur-md px-5 pt-4 pb-2 border-b border-stone-800/80 space-y-3">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-2xl bg-gradient-to-tr from-[#E05A47] to-[#F59E0B] flex items-center justify-center shadow shadow-red-950/40">
@@ -567,48 +631,55 @@ export default function DiscoverGalleryPage() {
           <button
             type="button"
             onClick={() => setActiveSubTab('following')}
-            className={`text-sm font-extrabold pb-2 relative transition-all cursor-pointer ${
+            className={`text-sm font-extrabold pb-2 relative transition-all cursor-pointer flex items-center gap-1.5 ${
               activeSubTab === 'following'
                 ? 'text-white'
                 : 'text-stone-500 hover:text-stone-300'
             }`}
           >
             <span>Suivre</span>
+            {followedUserIds.size > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-stone-800 border border-stone-700 text-[10px] text-stone-300 font-bold">
+                {followedUserIds.size}
+              </span>
+            )}
             {activeSubTab === 'following' && (
               <span className="absolute bottom-0 inset-x-0 h-0.5 bg-gradient-to-r from-[#E05A47] to-[#F59E0B] rounded-full shadow-sm shadow-red-500" />
             )}
           </button>
         </div>
 
-        {/* Barre de recherche et statistiques en temps réel (Visible sur Populaire) */}
-        {activeSubTab === 'popular' && (
-          <div className="flex items-center justify-between gap-2 pt-0.5">
-            <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder={`Rechercher parmi les ${oppositeGenderLabel.toLowerCase()}...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-stone-900/90 border border-stone-800 rounded-xl pl-8 pr-3 py-2 text-xs text-stone-100 placeholder:text-stone-500 focus:outline-none focus:border-[#E05A47]/60 transition-all"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            <div className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 shrink-0">
-              <Radio className="w-3 h-3 animate-pulse text-emerald-400" />
-              <span>{onlineCount} disponibles</span>
-            </div>
+        {/* Barre de recherche et statistiques en temps réel */}
+        <div className="flex items-center justify-between gap-2 pt-0.5">
+          <div className="relative flex-1">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder={
+                activeSubTab === 'popular'
+                  ? `Rechercher parmi les ${oppositeGenderLabel.toLowerCase()}...`
+                  : 'Rechercher parmi vos profils suivis...'
+              }
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-stone-900/90 border border-stone-800 rounded-xl pl-8 pr-3 py-2 text-xs text-stone-100 placeholder:text-stone-500 focus:outline-none focus:border-[#E05A47]/60 transition-all"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
-        )}
+
+          <div className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 shrink-0">
+            <Radio className="w-3 h-3 animate-pulse text-emerald-400" />
+            <span>{onlineCount} disponibles</span>
+          </div>
+        </div>
       </header>
 
       {/* Contenu principal */}
@@ -616,13 +687,16 @@ export default function DiscoverGalleryPage() {
         {/* SOUS-ONGLET 1 : POPULAIRE (Grille de profils) */}
         {activeSubTab === 'popular' && (
           <>
-            {filteredProfiles.length > 0 ? (
+            {filteredPopularProfiles.length > 0 ? (
               <div className="grid grid-cols-2 gap-3.5">
-                {filteredProfiles.map((profile) => (
+                {filteredPopularProfiles.map((profile) => (
                   <GalleryProfileCard
                     key={profile.id}
                     profile={profile}
+                    isFollowed={followedUserIds.has(profile.id)}
+                    canCall={isMan}
                     onCallClick={handleCallClick}
+                    onToggleFollow={handleToggleFollow}
                   />
                 ))}
               </div>
@@ -648,30 +722,53 @@ export default function DiscoverGalleryPage() {
           </>
         )}
 
-        {/* SOUS-ONGLET 2 : SUIVRE (Abonnements / Favoris mutuels - État vide) */}
+        {/* SOUS-ONGLET 2 : SUIVRE (Profils suivis) */}
         {activeSubTab === 'following' && (
-          <div className="text-center py-24 px-6 space-y-4 flex flex-col items-center justify-center">
-            <div className="w-16 h-16 rounded-3xl bg-stone-900 border border-stone-800 flex items-center justify-center text-stone-500 shadow-inner">
-              <Heart className="w-8 h-8 text-stone-500" />
-            </div>
-            <div className="space-y-1.5 max-w-xs">
-              <h3 className="text-base font-bold text-stone-200">
-                Aucun profil suivi pour l’instant
-              </h3>
-              <p className="text-xs text-stone-400 leading-relaxed font-medium">
-                Les profils que vous suivez ou avec lesquels vous échangez régulièrement apparaîtront dans cette liste dédiée.
-              </p>
-            </div>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => setActiveSubTab('popular')}
-                className="px-4 py-2 rounded-xl bg-stone-900 border border-stone-800 text-xs text-[#E05A47] font-bold hover:border-[#E05A47]/40 transition-all cursor-pointer"
-              >
-                Explorer la galerie populaire
-              </button>
-            </div>
-          </div>
+          <>
+            {filteredFollowedProfiles.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3.5">
+                {filteredFollowedProfiles.map((profile) => (
+                  <GalleryProfileCard
+                    key={profile.id}
+                    profile={profile}
+                    isFollowed={true}
+                    canCall={isMan}
+                    onCallClick={handleCallClick}
+                    onToggleFollow={handleToggleFollow}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-24 px-6 space-y-4 flex flex-col items-center justify-center">
+                <div className="w-16 h-16 rounded-3xl bg-stone-900 border border-stone-800 flex items-center justify-center text-stone-500 shadow-inner">
+                  <Heart className="w-8 h-8 text-stone-500" />
+                </div>
+                <div className="space-y-1.5 max-w-xs">
+                  <h3 className="text-base font-bold text-stone-200">
+                    {searchQuery
+                      ? 'Aucun profil suivi ne correspond à la recherche'
+                      : 'Aucun profil suivi pour l’instant'}
+                  </h3>
+                  <p className="text-xs text-stone-400 leading-relaxed font-medium">
+                    {searchQuery
+                      ? 'Essayez avec un autre nom ou filtrez sans recherche.'
+                      : 'Cliquez sur le bouton « Suivre » d’un profil dans la galerie populaire pour l’ajouter à vos favoris.'}
+                  </p>
+                </div>
+                {!searchQuery && (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab('popular')}
+                      className="px-4 py-2 rounded-xl bg-stone-900 border border-stone-800 text-xs text-[#E05A47] font-bold hover:border-[#E05A47]/40 transition-all cursor-pointer"
+                    >
+                      Explorer la galerie populaire
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

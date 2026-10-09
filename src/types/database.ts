@@ -210,6 +210,27 @@ export interface Database {
         }
         Relationships: []
       }
+      follows: {
+        Row: {
+          id: string
+          follower_id: string
+          following_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          follower_id: string
+          following_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          follower_id?: string
+          following_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -265,4 +286,5 @@ export type Conversation = Database['public']['Tables']['conversations']['Row']
 export type Message = Database['public']['Tables']['messages']['Row']
 export type RandomCallQueue = Database['public']['Tables']['random_call_queue']['Row']
 export type CallSession = Database['public']['Tables']['call_sessions']['Row']
+export type Follow = Database['public']['Tables']['follows']['Row']
 export type UserStatus = 'online' | 'busy' | 'in_call' | 'offline'
