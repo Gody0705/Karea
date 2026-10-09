@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { GalleryProfileCard } from '@/components/gallery/GalleryProfileCard'
+import { ProfileDetailModal } from '@/components/gallery/ProfileDetailModal'
 import { SignOutButton } from '@/components/auth/SignOutButton'
 import { VideoCallRoom } from '@/components/video/VideoCallRoom'
 import { IncomingCallModal } from '@/components/video/IncomingCallModal'
@@ -51,6 +52,7 @@ export default function DiscoverGalleryPage() {
   const [activeSubTab, setActiveSubTab] = useState<GallerySubTab>('popular')
   const [isLoading, setIsLoading] = useState(true)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [selectedDetailProfile, setSelectedDetailProfile] = useState<Profile | null>(null)
 
   // Gestion des appels vidéo
   const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null)
@@ -496,6 +498,16 @@ export default function DiscoverGalleryPage() {
     }
   }
 
+  // 9. Ouvrir la messagerie avec un profil (crée la conversation si besoin ou l'ouvre directement)
+  const handleMessageClick = (profile: Profile) => {
+    router.push(`/messages?partner=${profile.id}`)
+  }
+
+  // 10. Ouvrir la vue de détail en grand d'un profil
+  const handleProfileClick = (profile: Profile) => {
+    setSelectedDetailProfile(profile)
+  }
+
   // Filtrage par recherche
   const filterList = (list: Profile[]) => {
     return list.filter((p) => {
@@ -554,6 +566,18 @@ export default function DiscoverGalleryPage() {
           onReject={handleRejectIncomingCall}
         />
       )}
+
+      {/* 3. MODAL DE DÉTAIL D'UN PROFIL (EN GRAND) */}
+      <ProfileDetailModal
+        profile={selectedDetailProfile}
+        isOpen={!!selectedDetailProfile}
+        isFollowed={selectedDetailProfile ? followedUserIds.has(selectedDetailProfile.id) : false}
+        canCall={isMan}
+        onClose={() => setSelectedDetailProfile(null)}
+        onMessageClick={handleMessageClick}
+        onCallClick={handleCallClick}
+        onToggleFollow={handleToggleFollow}
+      />
 
       {/* Halos lumineux d'ambiance */}
       <div className="absolute top-0 -left-20 w-72 h-72 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -696,6 +720,8 @@ export default function DiscoverGalleryPage() {
                     isFollowed={followedUserIds.has(profile.id)}
                     canCall={isMan}
                     onCallClick={handleCallClick}
+                    onMessageClick={handleMessageClick}
+                    onProfileClick={handleProfileClick}
                     onToggleFollow={handleToggleFollow}
                   />
                 ))}
@@ -734,6 +760,8 @@ export default function DiscoverGalleryPage() {
                     isFollowed={true}
                     canCall={isMan}
                     onCallClick={handleCallClick}
+                    onMessageClick={handleMessageClick}
+                    onProfileClick={handleProfileClick}
                     onToggleFollow={handleToggleFollow}
                   />
                 ))}

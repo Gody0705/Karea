@@ -2,7 +2,7 @@
 
 import React from 'react'
 import Image from 'next/image'
-import { Video, Sparkles, MapPin, Heart, Plus, Check } from 'lucide-react'
+import { Video, Sparkles, MapPin, Heart, MessageCircle } from 'lucide-react'
 import type { Profile } from '@/types/database'
 
 interface GalleryProfileCardProps {
@@ -10,6 +10,8 @@ interface GalleryProfileCardProps {
   isFollowed?: boolean
   canCall?: boolean
   onCallClick: (profile: Profile) => void
+  onMessageClick?: (profile: Profile) => void
+  onProfileClick?: (profile: Profile) => void
   onToggleFollow?: (profile: Profile) => void
 }
 
@@ -18,6 +20,8 @@ export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
   isFollowed = false,
   canCall = true,
   onCallClick,
+  onMessageClick,
+  onProfileClick,
   onToggleFollow,
 }) => {
   const isOccupied = profile.in_call || profile.status === 'busy' || profile.status === 'in_call'
@@ -51,9 +55,11 @@ export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
   const badge = getStatusBadge()
   const displayName = profile.first_name || 'Utilisateur'
   const locationText = profile.city || profile.country || null
-
   return (
-    <div className="group relative rounded-3xl overflow-hidden bg-stone-900 border border-stone-800/80 aspect-[3/4.2] flex flex-col justify-between shadow-lg shadow-black/40 transition-all duration-300 hover:border-stone-700 hover:shadow-red-950/20">
+    <div
+      onClick={() => onProfileClick?.(profile)}
+      className="group relative rounded-3xl overflow-hidden bg-stone-900 border border-stone-800/80 aspect-[3/4.2] flex flex-col justify-between shadow-lg shadow-black/40 transition-all duration-300 hover:border-stone-700 hover:shadow-red-950/20 cursor-pointer"
+    >
       {/* Image de fond ou fallback élégant */}
       {profile.avatar_url ? (
         <Image
@@ -119,7 +125,7 @@ export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
         )}
       </div>
 
-      {/* Informations et bouton d'appel en bas */}
+      {/* Informations et boutons d'action en bas */}
       <div className="relative z-10 p-3 flex items-end justify-between gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-extrabold text-white truncate drop-shadow">
@@ -133,18 +139,40 @@ export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
           )}
         </div>
 
-        {/* Bouton rond appel vidéo — UNIQUEMENT pour les comptes hommes (canCall = true) */}
-        {canCall && (
-          <button
-            type="button"
-            onClick={() => onCallClick(profile)}
-            className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#E05A47] to-[#F59E0B] text-white flex items-center justify-center shadow-lg shadow-red-950/60 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer shrink-0 border border-white/20"
-            title="Lancer un appel vidéo"
-            aria-label={`Appeler ${displayName}`}
-          >
-            <Video className="w-4 h-4" />
-          </button>
-        )}
+        {/* Boutons d'action (Message + Appel Vidéo) */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Bouton Message : disponible sur chaque carte de profil */}
+          {onMessageClick && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onMessageClick(profile)
+              }}
+              className="w-9 h-9 rounded-full bg-black/60 border border-white/25 text-white flex items-center justify-center shadow-lg backdrop-blur-md hover:bg-black/80 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
+              title={`Discuter avec ${displayName}`}
+              aria-label={`Envoyer un message à ${displayName}`}
+            >
+              <MessageCircle className="w-4 h-4 text-white" />
+            </button>
+          )}
+
+          {/* Bouton rond appel vidéo — UNIQUEMENT pour les comptes hommes (canCall = true) */}
+          {canCall && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onCallClick(profile)
+              }}
+              className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#E05A47] to-[#F59E0B] text-white flex items-center justify-center shadow-lg shadow-red-950/60 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer shrink-0 border border-white/20"
+              title="Lancer un appel vidéo"
+              aria-label={`Appeler ${displayName}`}
+            >
+              <Video className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
