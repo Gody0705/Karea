@@ -1,23 +1,38 @@
 'use client'
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { GalleryProfileCard } from '@/components/gallery/GalleryProfileCard'
 import { SignOutButton } from '@/components/auth/SignOutButton'
+import { VideoCallRoom } from '@/components/video/VideoCallRoom'
+import { IncomingCallModal } from '@/components/video/IncomingCallModal'
+import { fetchAgoraToken } from '@/lib/agora/token'
 import {
-  Sparkles,
   Users,
-  AlertCircle,
   Video,
   Flame,
   Radio,
-  Clock,
   Search,
   X,
+  Loader2,
 } from 'lucide-react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
-import type { Profile } from '@/types/database'
+import type { Profile, CallSession } from '@/types/database'
+
+interface ActiveCallState {
+  session: CallSession
+  partner: Profile
+  isCaller: boolean
+  token: string
+  appId: string
+  channelName: string
+}
+
+interface IncomingCallState {
+  session: CallSession
+  caller: Profile
+}
 
 export default function DiscoverGalleryPage() {
   const router = useRouter()
@@ -30,18 +45,33 @@ export default function DiscoverGalleryPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
-  // Tri intelligent : En ligne en premier, puis Occupé, puis Hors ligne, puis par dernière activité
+  // Gestion des appels vidéo
+  const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null)
+  const [incomingCall, setIncomingCall] = useState<IncomingCallState | null>(null)
+  const [isCalling, setIsCalling] = useState(false)
+
+  const activeCallRef = useRef<ActiveCallState | null>(null)
+  activeCallRef.current = activeCall
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg)
+    setTimeout(() => {
+      setToastMessage((current) => (current === msg ? null : current))
+    }, 4500)
+  }, [])
+
+  // Tri intelligent : En ligne et libre en premier, puis Occupé, puis Hors ligne
   const sortProfiles = useCallback((list: Profile[]): Profile[] => {
-    const statusWeight: Record<string, number> = {
-      online: 1,
-      busy: 2,
-      in_call: 2,
-      offline: 3,
+    const getWeight = (p: Profile) => {
+      const isOccupied = p.in_call || p.status === 'busy' || p.status === 'in_call'
+      if (p.status === 'online' && !isOccupied) return 1
+      if (isOccupied) return 2
+      return 3
     }
 
     return [...list].sort((a, b) => {
-      const weightA = statusWeight[a.status] ?? 3
-      const weightB = statusWeight[b.status] ?? 3
+      const weightA = getWeight(a)
+      const weightB = getWeight(b)
 
       if (weightA !== weightB) {
         return weightA - weightB
@@ -53,7 +83,7 @@ export default function DiscoverGalleryPage() {
     })
   }, [])
 
-  // 1. Chargement de l'utilisateur et du profil
+  // 1. Initialisation de la session et présence
   useEffect(() => {
     let isMounted = true
 
@@ -89,11 +119,19 @@ export default function DiscoverGalleryPage() {
 
         setMyProfile(profile)
 
-        // Définir le statut de l'utilisateur sur 'online' à l'ouverture de l'application
+        // Nettoyage des appels précédents éventuellement orphelins (crash, perte réseau)
+        // et passage du profil à online
+        try {
+          await supabase.rpc('reset_my_call_state')
+        } catch {
+          // Fallback direct
+        }
+
         await supabase
           .from('profiles')
           .update({
             status: 'online',
+            in_call: false,
             last_seen_at: new Date().toISOString(),
           })
           .eq('id', user.id)
@@ -119,7 +157,7 @@ export default function DiscoverGalleryPage() {
 
     initSessionAndPresence()
 
-    // 2. Gestionnaire de départ / fermeture de page (passage à 'offline')
+    // Gestionnaire de départ / fermeture de page (passage à 'offline')
     const handleVisibilityChange = () => {
       if (!currentUser) return
       const nextStatus = document.visibilityState === 'visible' ? 'online' : 'offline'
@@ -140,7 +178,7 @@ export default function DiscoverGalleryPage() {
     }
   }, [router, supabase, sortProfiles])
 
-  // 3. Supabase Realtime : Écoute en direct des changements de statut sur profiles
+  // 2. Supabase Realtime : Écoute en direct des statuts de présence sur profiles
   useEffect(() => {
     if (!myProfile || !currentUser) return
 
@@ -159,10 +197,13 @@ export default function DiscoverGalleryPage() {
           if (payload.eventType === 'UPDATE') {
             const updatedProfile = payload.new as Profile
 
-            // Ignorer si c'est mon propre profil
-            if (updatedProfile.id === currentUser.id) return
+            // Si c'est mon propre profil
+            if (updatedProfile.id === currentUser.id) {
+              setMyProfile(updatedProfile)
+              return
+            }
 
-            // Vérifier si le profil appartient bien au genre opposé
+            // Si c'est un profil du genre opposé
             if (updatedProfile.gender === targetGender) {
               setProfiles((prev) => {
                 const exists = prev.some((p) => p.id === updatedProfile.id)
@@ -172,7 +213,6 @@ export default function DiscoverGalleryPage() {
                 return sortProfiles(nextList)
               })
             } else {
-              // Si le profil n'est plus du genre ciblé, le retirer
               setProfiles((prev) => prev.filter((p) => p.id !== updatedProfile.id))
             }
           } else if (payload.eventType === 'INSERT') {
@@ -197,13 +237,200 @@ export default function DiscoverGalleryPage() {
     }
   }, [myProfile, currentUser, supabase, sortProfiles])
 
-  // Clic sur l'icône d'appel vidéo
-  const handleCallClick = (profile: Profile) => {
-    const name = profile.first_name || 'cet utilisateur'
-    setToastMessage(`Bientôt disponible — Les appels vidéo en direct avec ${name} arrivent très bientôt !`)
-    setTimeout(() => {
-      setToastMessage(null)
-    }, 4500)
+  // 3. Supabase Realtime : Écoute des sessions d'appel (Appels entrants, fin d'appel)
+  useEffect(() => {
+    if (!currentUser) return
+
+    const callChannel = supabase
+      .channel(`karea_calls_${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'call_sessions',
+        },
+        async (payload) => {
+          const session = payload.new as CallSession
+
+          if (!session) return
+
+          // A. Réception d'un appel entrant sonnant pour moi
+          if (
+            session.receiver_id === currentUser.id &&
+            session.status === 'ringing' &&
+            !activeCallRef.current
+          ) {
+            // Récupérer les informations de l'appelant
+            const { data: callerProfile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.caller_id)
+              .maybeSingle<Profile>()
+
+            if (callerProfile) {
+              setIncomingCall({ session, caller: callerProfile })
+            }
+          }
+
+          // B. L'appel entrant a été annulé ou manqué
+          if (
+            session.receiver_id === currentUser.id &&
+            ['ended', 'rejected', 'missed', 'busy'].includes(session.status)
+          ) {
+            setIncomingCall((curr) => (curr?.session.id === session.id ? null : curr))
+          }
+
+          // C. Mon appel en cours a été terminé par l'autre participant
+          if (
+            activeCallRef.current &&
+            activeCallRef.current.session.id === session.id &&
+            ['ended', 'rejected', 'missed', 'busy'].includes(session.status)
+          ) {
+            showToast('L’appel est terminé.')
+            setActiveCall(null)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(callChannel)
+    }
+  }, [currentUser, supabase, showToast])
+
+  // 4. Lancer un appel vidéo vers un profil
+  const handleCallClick = async (callee: Profile) => {
+    if (!currentUser || !myProfile) return
+
+    const calleeName = callee.first_name || 'cet utilisateur'
+
+    // Vérifier si le profil est occupé ou hors ligne
+    if (callee.in_call || callee.status === 'busy' || callee.status === 'in_call') {
+      showToast(`${calleeName} est actuellement déjà en appel.`)
+      return
+    }
+
+    if (callee.status !== 'online') {
+      showToast(`${calleeName} n'est pas en ligne pour le moment.`)
+      return
+    }
+
+    if (activeCall || isCalling) return
+
+    setIsCalling(true)
+
+    try {
+      // 1. Appel de la fonction RPC pour créer la session d'appel et passer les statuts en in_call = true
+      const { data: sessionData, error: sessionError } = await supabase.rpc(
+        'start_direct_call',
+        {
+          p_callee_id: callee.id,
+        }
+      )
+
+      if (sessionError || !sessionData) {
+        throw new Error(sessionError?.message || 'Impossible d’initialiser l’appel.')
+      }
+
+      const createdSession = sessionData as CallSession
+      const channelName = createdSession.channel_name || `karea_${createdSession.id}`
+
+      // 2. Obtenir le token Agora RTC sécurisé depuis l'Edge Function agora-token
+      const agoraData = await fetchAgoraToken(supabase, channelName)
+
+      // 3. Ouvrir l'écran de visioconférence
+      setActiveCall({
+        session: createdSession,
+        partner: callee,
+        isCaller: true,
+        token: agoraData.token,
+        appId: agoraData.appId,
+        channelName,
+      })
+    } catch (err: any) {
+      console.error('Erreur appel:', err)
+      showToast(err?.message || 'Échec de la connexion à l’appel vidéo.')
+    } finally {
+      setIsCalling(false)
+    }
+  }
+
+  // 5. Accepter un appel entrant
+  const handleAcceptIncomingCall = async () => {
+    if (!incomingCall || !currentUser) return
+
+    const session = incomingCall.session
+    const caller = incomingCall.caller
+    setIncomingCall(null)
+    setIsCalling(true)
+
+    try {
+      // Confirmer l'acceptation via RPC
+      const { data: sessionData, error: acceptError } = await supabase.rpc(
+        'accept_direct_call',
+        {
+          p_session_id: session.id,
+        }
+      )
+
+      if (acceptError || !sessionData) {
+        throw new Error(acceptError?.message || 'Cet appel n’est plus disponible.')
+      }
+
+      const activeSession = sessionData as CallSession
+      const channelName = activeSession.channel_name || `karea_${activeSession.id}`
+
+      // Obtenir le token Agora RTC
+      const agoraData = await fetchAgoraToken(supabase, channelName)
+
+      setActiveCall({
+        session: activeSession,
+        partner: caller,
+        isCaller: false,
+        token: agoraData.token,
+        appId: agoraData.appId,
+        channelName,
+      })
+    } catch (err: any) {
+      console.error('Erreur acceptation appel:', err)
+      showToast(err?.message || 'Impossible de rejoindre l’appel.')
+    } finally {
+      setIsCalling(false)
+    }
+  }
+
+  // 6. Refuser un appel entrant
+  const handleRejectIncomingCall = async () => {
+    if (!incomingCall) return
+    const sessionId = incomingCall.session.id
+    setIncomingCall(null)
+
+    try {
+      await supabase.rpc('end_direct_call', {
+        p_session_id: sessionId,
+        p_reason: 'rejected',
+      })
+    } catch (err) {
+      console.error('Erreur rejet appel:', err)
+    }
+  }
+
+  // 7. Terminer un appel en cours (raccrocher)
+  const handleEndActiveCall = async () => {
+    const currentActive = activeCallRef.current
+    setActiveCall(null)
+
+    if (currentActive) {
+      try {
+        await supabase.rpc('end_direct_call', {
+          p_session_id: currentActive.session.id,
+          p_reason: 'ended',
+        })
+      } catch (err) {
+        console.error('Erreur fin d’appel:', err)
+      }
+    }
   }
 
   // Filtrage par recherche
@@ -216,7 +443,9 @@ export default function DiscoverGalleryPage() {
     return nameMatch || cityMatch || countryMatch
   })
 
-  const onlineCount = profiles.filter((p) => p.status === 'online').length
+  const onlineCount = profiles.filter(
+    (p) => p.status === 'online' && !p.in_call
+  ).length
   const oppositeGenderLabel = myProfile?.gender === 'female' ? 'Hommes' : 'Femmes'
 
   if (isLoading) {
@@ -232,11 +461,45 @@ export default function DiscoverGalleryPage() {
 
   return (
     <main className="min-h-screen bg-[#0D0B0B] text-stone-100 flex flex-col justify-between max-w-md mx-auto relative overflow-hidden pb-10">
+      {/* 1. ÉCRAN D'APPEL VIDÉO EN COURS (AGORA RTC) */}
+      {activeCall && currentUser && (
+        <VideoCallRoom
+          session={activeCall.session}
+          partner={activeCall.partner}
+          isCaller={activeCall.isCaller}
+          token={activeCall.token}
+          appId={activeCall.appId}
+          channelName={activeCall.channelName}
+          currentUserId={currentUser.id}
+          onEndCall={handleEndActiveCall}
+        />
+      )}
+
+      {/* 2. MODAL D'APPEL ENTRANT */}
+      {incomingCall && !activeCall && (
+        <IncomingCallModal
+          session={incomingCall.session}
+          caller={incomingCall.caller}
+          onAccept={handleAcceptIncomingCall}
+          onReject={handleRejectIncomingCall}
+        />
+      )}
+
       {/* Halos lumineux d'ambiance */}
       <div className="absolute top-0 -left-20 w-72 h-72 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 -right-20 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Notification Toast Bientôt Disponible */}
+      {/* Overlay de chargement pendant l'initialisation de l'appel */}
+      {isCalling && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-10 h-10 text-[#E05A47] animate-spin" />
+          <p className="text-xs font-semibold text-stone-200">
+            Connexion au serveur vidéo en cours...
+          </p>
+        </div>
+      )}
+
+      {/* Notification Toast */}
       {toastMessage && (
         <div className="fixed top-5 inset-x-4 max-w-md mx-auto z-50 animate-in fade-in slide-in-from-top duration-300">
           <div className="p-3.5 rounded-2xl bg-stone-900/95 border border-[#E05A47]/50 text-white text-xs flex items-center justify-between shadow-2xl shadow-red-950/80 backdrop-blur-xl gap-3">
@@ -249,7 +512,7 @@ export default function DiscoverGalleryPage() {
             <button
               type="button"
               onClick={() => setToastMessage(null)}
-              className="text-stone-400 hover:text-white p-1"
+              className="text-stone-400 hover:text-white p-1 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -293,7 +556,7 @@ export default function DiscoverGalleryPage() {
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -302,7 +565,7 @@ export default function DiscoverGalleryPage() {
 
           <div className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 shrink-0">
             <Radio className="w-3 h-3 animate-pulse text-emerald-400" />
-            <span>{onlineCount} en direct</span>
+            <span>{onlineCount} disponibles</span>
           </div>
         </div>
       </header>

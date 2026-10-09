@@ -14,35 +14,35 @@ export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
   profile,
   onCallClick,
 }) => {
-  const getStatusBadge = (status: UserStatus) => {
-    switch (status) {
-      case 'online':
-        return {
-          dotColor: 'bg-emerald-400',
-          bgColor: 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300',
-          label: 'En ligne',
-          animate: true,
-        }
-      case 'busy':
-      case 'in_call':
-        return {
-          dotColor: 'bg-rose-400',
-          bgColor: 'bg-rose-950/70 border-rose-500/40 text-rose-300',
-          label: 'Occupé',
-          animate: false,
-        }
-      case 'offline':
-      default:
-        return {
-          dotColor: 'bg-stone-400',
-          bgColor: 'bg-stone-900/80 border-stone-700/50 text-stone-300',
-          label: 'Hors ligne',
-          animate: false,
-        }
+  const isOccupied = profile.in_call || profile.status === 'busy' || profile.status === 'in_call'
+  const isOnline = profile.status === 'online' && !isOccupied
+
+  const getStatusBadge = () => {
+    if (isOccupied) {
+      return {
+        dotColor: 'bg-rose-400',
+        bgColor: 'bg-rose-950/70 border-rose-500/40 text-rose-300',
+        label: 'Occupé',
+        animate: false,
+      }
+    }
+    if (isOnline) {
+      return {
+        dotColor: 'bg-emerald-400',
+        bgColor: 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300',
+        label: 'En ligne',
+        animate: true,
+      }
+    }
+    return {
+      dotColor: 'bg-stone-400',
+      bgColor: 'bg-stone-900/80 border-stone-700/50 text-stone-300',
+      label: 'Hors ligne',
+      animate: false,
     }
   }
 
-  const badge = getStatusBadge(profile.status)
+  const badge = getStatusBadge()
   const displayName = profile.first_name || 'Utilisateur'
   const locationText = profile.city || profile.country || null
 

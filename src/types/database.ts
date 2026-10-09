@@ -21,6 +21,7 @@ export interface Database {
           avatar_url: string | null
           is_profile_completed: boolean
           status: 'online' | 'busy' | 'offline' | 'in_call'
+          in_call: boolean
           last_seen_at: string
           price_per_minute: number
           created_at: string
@@ -37,6 +38,7 @@ export interface Database {
           avatar_url?: string | null
           is_profile_completed?: boolean
           status?: 'online' | 'busy' | 'offline' | 'in_call'
+          in_call?: boolean
           last_seen_at?: string
           price_per_minute?: number
           created_at?: string
@@ -53,6 +55,7 @@ export interface Database {
           avatar_url?: string | null
           is_profile_completed?: boolean
           status?: 'online' | 'busy' | 'offline' | 'in_call'
+          in_call?: boolean
           last_seen_at?: string
           price_per_minute?: number
           created_at?: string
@@ -163,6 +166,7 @@ export interface Database {
           receiver_id: string
           call_type: 'direct' | 'random'
           status: 'initiated' | 'ringing' | 'in_progress' | 'ended' | 'rejected' | 'missed' | 'busy'
+          channel_name: string | null
           price_per_minute: number
           started_at: string | null
           ended_at: string | null
@@ -178,6 +182,7 @@ export interface Database {
           receiver_id: string
           call_type?: 'direct' | 'random'
           status?: 'initiated' | 'ringing' | 'in_progress' | 'ended' | 'rejected' | 'missed' | 'busy'
+          channel_name?: string | null
           price_per_minute?: number
           started_at?: string | null
           ended_at?: string | null
@@ -193,6 +198,7 @@ export interface Database {
           receiver_id?: string
           call_type?: 'direct' | 'random'
           status?: 'initiated' | 'ringing' | 'in_progress' | 'ended' | 'rejected' | 'missed' | 'busy'
+          channel_name?: string | null
           price_per_minute?: number
           started_at?: string | null
           ended_at?: string | null
@@ -209,7 +215,41 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      start_direct_call: {
+        Args: {
+          p_callee_id: string
+        }
+        Returns: Database['public']['Tables']['call_sessions']['Row']
+      }
+      accept_direct_call: {
+        Args: {
+          p_session_id: string
+        }
+        Returns: Database['public']['Tables']['call_sessions']['Row']
+      }
+      end_direct_call: {
+        Args: {
+          p_session_id: string
+          p_reason?: string
+        }
+        Returns: void
+      }
+      reset_my_call_state: {
+        Args: Record<PropertyKey, never>
+        Returns: void
+      }
+      get_or_create_conversation: {
+        Args: {
+          p_other_user_id: string
+        }
+        Returns: string
+      }
+      unlock_conversation: {
+        Args: {
+          p_conversation_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
