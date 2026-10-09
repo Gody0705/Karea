@@ -88,6 +88,8 @@ function MessagesContent() {
                 birthdate: null,
                 city: null,
                 country: null,
+                token_balance: 0,
+                earned_tokens: 0,
               }
 
             // Dernier message

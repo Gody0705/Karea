@@ -165,6 +165,15 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
               )}
               <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
             </div>
+
+            {profile.gender === 'female' && (
+              <div className="pt-1 flex items-center">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-black backdrop-blur-md shadow-lg shadow-amber-950/40">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  Tarif appel : {profile.price_per_minute ?? 25} tokens / min
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

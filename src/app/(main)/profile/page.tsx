@@ -83,9 +83,11 @@ export default function ProfilePage() {
   const countryInfo = getCountryFlag(profile?.country || profile?.city || 'CI')
   const formattedId = profile?.id ? `ID-${profile.id.slice(0, 8).toUpperCase()}` : 'ID-000000'
 
-  // Exemple de calcul de solde / tokens
-  const tokenBalance = 500
-  const femaleEarningsFCFA = 15000 // Valeur en argent des gains pour compte femme
+  // Soldes réels en base Supabase
+  const tokenBalance = Math.floor(Number(profile?.token_balance || 0))
+  const femaleEarnedTokens = Number(profile?.earned_tokens || 0)
+  // Conversion illustrative en FCFA (par exemple 1 token = 20 FCFA ou affichage tokens)
+  const femaleEarningsFCFA = Math.round(femaleEarnedTokens * 20)
 
   return (
     <main className="min-h-screen w-full max-w-md mx-auto bg-[#0D0B0B] text-stone-100 flex flex-col relative pb-32 sm:pb-36">
@@ -206,7 +208,10 @@ export default function ProfilePage() {
                       Gains Vidéo Générés
                     </span>
                     <p className="text-xl font-black text-emerald-300">
-                      {femaleEarningsFCFA.toLocaleString('fr-FR')} FCFA
+                      {femaleEarnedTokens.toFixed(1)} <span className="text-sm font-semibold text-emerald-400">tokens</span>
+                    </p>
+                    <p className="text-[11px] text-emerald-300/80 font-medium">
+                      ≈ {femaleEarningsFCFA.toLocaleString('fr-FR')} FCFA
                     </p>
                   </div>
                 </div>

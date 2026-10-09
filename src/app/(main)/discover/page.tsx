@@ -383,6 +383,17 @@ export default function DiscoverGalleryPage() {
       return
     }
 
+    // Vérification du solde de tokens (doit avoir au moins 1 minute de tarif)
+    const requiredTokens = Number(callee.price_per_minute ?? 25)
+    const currentTokens = Number(myProfile.token_balance ?? 0)
+
+    if (myProfile.gender === 'male' && currentTokens < requiredTokens) {
+      showToast(
+        `Solde insuffisant : il vous faut au moins ${requiredTokens} tokens pour appeler ${calleeName}. Veuillez recharger votre compte.`
+      )
+      return
+    }
+
     if (activeCall || isCalling) return
 
     setIsCalling(true)

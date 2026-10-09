@@ -24,6 +24,8 @@ export interface Database {
           in_call: boolean
           last_seen_at: string
           price_per_minute: number
+          token_balance: number
+          earned_tokens: number
           created_at: string
           updated_at: string
         }
@@ -41,6 +43,8 @@ export interface Database {
           in_call?: boolean
           last_seen_at?: string
           price_per_minute?: number
+          token_balance?: number
+          earned_tokens?: number
           created_at?: string
           updated_at?: string
         }
@@ -58,6 +62,8 @@ export interface Database {
           in_call?: boolean
           last_seen_at?: string
           price_per_minute?: number
+          token_balance?: number
+          earned_tokens?: number
           created_at?: string
           updated_at?: string
         }
@@ -231,6 +237,66 @@ export interface Database {
         }
         Relationships: []
       }
+      transactions: {
+        Row: {
+          id: string
+          session_id: string | null
+          payer_id: string
+          payee_id: string
+          amount: number
+          payee_earnings: number
+          platform_fee: number
+          type: 'call_per_second' | 'call_final' | 'gift' | 'unlock'
+          seconds_billed: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          session_id?: string | null
+          payer_id: string
+          payee_id: string
+          amount: number
+          payee_earnings: number
+          platform_fee: number
+          type?: 'call_per_second' | 'call_final' | 'gift' | 'unlock'
+          seconds_billed?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string | null
+          payer_id?: string
+          payee_id?: string
+          amount?: number
+          payee_earnings?: number
+          platform_fee?: number
+          type?: 'call_per_second' | 'call_final' | 'gift' | 'unlock'
+          seconds_billed?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      app_config: {
+        Row: {
+          key: string
+          value: unknown
+          description: string | null
+          updated_at: string
+        }
+        Insert: {
+          key: string
+          value: unknown
+          description?: string | null
+          updated_at?: string
+        }
+        Update: {
+          key?: string
+          value?: unknown
+          description?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -277,6 +343,22 @@ export interface Database {
         }
         Returns: void
       }
+      process_call_billing_tick: {
+        Args: {
+          p_session_id: string
+          p_elapsed_seconds: number
+        }
+        Returns: {
+          success: boolean
+          billed_seconds?: number
+          total_cost_chunk?: number
+          female_earnings_chunk?: number
+          man_balance?: number
+          woman_earnings?: number
+          should_hangup?: boolean
+          reason?: string
+        }
+      }
     }
     Enums: {
       [_ in never]: never
@@ -293,4 +375,6 @@ export type Message = Database['public']['Tables']['messages']['Row']
 export type RandomCallQueue = Database['public']['Tables']['random_call_queue']['Row']
 export type CallSession = Database['public']['Tables']['call_sessions']['Row']
 export type Follow = Database['public']['Tables']['follows']['Row']
+export type Transaction = Database['public']['Tables']['transactions']['Row']
+export type AppConfig = Database['public']['Tables']['app_config']['Row']
 export type UserStatus = 'online' | 'busy' | 'in_call' | 'offline'

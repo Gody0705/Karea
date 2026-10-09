@@ -137,6 +137,12 @@ export const GalleryProfileCard: React.FC<GalleryProfileCardProps> = ({
               <span className="truncate">{locationText}</span>
             </p>
           )}
+          {profile.gender === 'female' && (
+            <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-extrabold backdrop-blur-md shadow-sm">
+              <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+              <span>{profile.price_per_minute ?? 25} tokens/min</span>
+            </div>
+          )}
         </div>
 
         {/* Boutons d'action (Message + Appel Vidéo) */}
