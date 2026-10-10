@@ -306,6 +306,7 @@ export default function DiscoverGalleryPage() {
             activeCallRef.current.session.id === session.id &&
             ['ended', 'rejected', 'missed', 'busy'].includes(session.status)
           ) {
+            console.log(`FIN APPEL (discover): session d'appel terminée côté serveur via Realtime avec statut '${session.status}'`)
             showToast('L’appel est terminé.')
             setActiveCall(null)
           }
@@ -514,8 +515,9 @@ export default function DiscoverGalleryPage() {
   }
 
   // 8. Terminer un appel en cours (raccrocher)
-  const handleEndActiveCall = async () => {
+  const handleEndActiveCall = useCallback(async () => {
     const currentActive = activeCallRef.current
+    console.log('FIN APPEL (discover): handleEndActiveCall invoqué')
     setActiveCall(null)
 
     if (currentActive) {
@@ -528,7 +530,7 @@ export default function DiscoverGalleryPage() {
         console.error('Erreur fin d’appel:', err)
       }
     }
-  }
+  }, [supabase])
 
   // 9. Ouvrir la messagerie avec un profil (crée la conversation si besoin ou l'ouvre directement)
   const handleMessageClick = (profile: Profile) => {

@@ -96,6 +96,12 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Référence stable pour le callback onEndCall afin d'éviter tout démontage intempestif
+  const onEndCallRef = useRef(onEndCall)
+  useEffect(() => {
+    onEndCallRef.current = onEndCall
+  }, [onEndCall])
+
   // Nettoyage complet des pistes et du client Agora
   const cleanupAgora = useCallback(async () => {
     if (isCleaningUpRef.current) return
@@ -144,14 +150,16 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     }
   }, [])
 
-  // Raccrocher déclenché par l'utilisateur
-  const handleHangup = useCallback(async () => {
+  // Raccrocher déclenché par l'utilisateur ou par une condition de fin
+  const handleHangup = useCallback(async (reason: string = 'non précisée') => {
     if (isLeavingRef.current) return
     isLeavingRef.current = true
 
+    console.log(`FIN APPEL : ${reason}`)
+
     await cleanupAgora()
-    onEndCall()
-  }, [cleanupAgora, onEndCall])
+    onEndCallRef.current?.()
+  }, [cleanupAgora])
 
   // 1. Initialisation unique du client Agora RTC
   useEffect(() => {
@@ -168,6 +176,10 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
         const agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
         clientRef.current = agoraClient
+
+        agoraClient.on('connection-state-change', (curState, revState, reason) => {
+          console.log(`[Agora RTC] État: ${revState} -> ${curState}${reason ? ` (raison: ${reason})` : ''}`)
+        })
 
         agoraClient.on('user-published', async (user, mediaType) => {
           if (isCancelled || !clientRef.current) return
@@ -192,12 +204,13 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           }
         })
 
-        agoraClient.on('user-left', () => {
+        agoraClient.on('user-left', (_user, reason) => {
+          console.log(`FIN APPEL : l'autre a raccroché (événement Agora user-left, raison Agora: ${reason || 'inconnue'})`)
           setRemoteUser(null)
           setRemoteHasVideo(false)
           setCallStatusText('Votre correspondant a raccroché.')
           setTimeout(() => {
-            handleHangup()
+            handleHangup("l'autre a raccroché (événement Agora user-left)")
           }, 1200)
         })
 
@@ -271,10 +284,11 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     initAgora()
 
     return () => {
+      console.log('FIN APPEL : démontage du composant VideoCallRoom (cleanup useEffect Agora)')
       isCancelled = true
       cleanupAgora()
     }
-  }, [appId, channelName, currentUserId, token, isCaller, cleanupAgora, handleHangup])
+  }, [appId, channelName, currentUserId, token, isCaller, cleanupAgora])
 
   // 2. Rendu de la vidéo locale
   useEffect(() => {
@@ -387,6 +401,11 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     callDurationRef.current = callDuration
   }, [callDuration])
 
+  const callerRemainingTokensRef = useRef<number | null>(callerRemainingTokens)
+  useEffect(() => {
+    callerRemainingTokensRef.current = callerRemainingTokens
+  }, [callerRemainingTokens])
+
   useEffect(() => {
     // Débit actif dès que l'appel est en direct (décroché par la femme ou flux connecté)
     const isCallLive = isCaller && isJoined && (session.status === 'in_progress' || !!remoteUser)
@@ -409,21 +428,39 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         }
 
         if (data) {
-          const remainingTokens = Number(data.man_balance ?? 0)
-          const earnedTokens = Number(data.woman_earnings ?? 0)
-          setCallerRemainingTokens(remainingTokens)
-          setCalleeEarnedTokens(earnedTokens)
+          // Si le serveur indique explicitement que la session est déjà terminée
+          if (data.success === false && data.reason === 'call_ended') {
+            console.log("FIN APPEL : session marquée terminée côté serveur dans process_call_billing_tick (call_ended)")
+            handleHangup("session déjà terminée côté serveur (call_ended)")
+            return
+          }
 
-          // Prévenir l'homme environ 15 secondes avant que le solde soit épuisé
-          const secondsLeft = ratePerSecond > 0 ? remainingTokens / ratePerSecond : 999
-          if (secondsLeft <= 15 && remainingTokens > 0) {
+          // Récupération stricte des soldes numériques renvoyés par la base
+          const hasManBalance = data.man_balance !== undefined && data.man_balance !== null
+          const remainingTokens = hasManBalance ? Number(data.man_balance) : callerRemainingTokensRef.current
+          const earnedTokens = data.woman_earnings !== undefined && data.woman_earnings !== null
+            ? Number(data.woman_earnings)
+            : null
+
+          if (remainingTokens !== null) {
+            setCallerRemainingTokens(remainingTokens)
+          }
+          if (earnedTokens !== null) {
+            setCalleeEarnedTokens(earnedTokens)
+          }
+
+          // Prévenir l'homme environ 15 secondes avant que le solde soit épuisé (uniquement si solde > 0)
+          const currentBal = remainingTokens !== null ? remainingTokens : callerRemainingTokensRef.current
+          const secondsLeft = ratePerSecond > 0 && currentBal !== null ? currentBal / ratePerSecond : 999
+          if (secondsLeft <= 15 && currentBal !== null && currentBal > 0) {
             setShowLowBalanceWarning(true)
           } else {
             setShowLowBalanceWarning(false)
           }
 
-          // Couper l'appel des DEUX côtés UNIQUEMENT quand le solde atteint 0
-          if (remainingTokens <= 0 || (data.should_hangup && remainingTokens <= 0)) {
+          // RÈGLE STRICTE : Couper l'appel UNIQUEMENT quand le solde atteint 0, JAMAIS AVANT !
+          if (currentBal !== null && currentBal <= 0) {
+            console.log(`FIN APPEL : solde épuisé (${currentBal} tokens restants)`)
             setIsCallTerminatedByBalance(true)
             setCallStatusText('Solde de tokens épuisé. Fin de l’appel.')
             if (billingTimerRef.current) {
@@ -431,7 +468,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
               billingTimerRef.current = null
             }
             setTimeout(() => {
-              handleHangup()
+              handleHangup(`solde épuisé (${currentBal} tokens restants)`)
             }, 1200)
           }
         }
@@ -450,7 +487,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         billingTimerRef.current = null
       }
     }
-  }, [isCaller, isJoined, remoteUser, session.status, session.id, supabase, ratePerSecond, handleHangup])
+  }, [isCaller, isJoined, !!remoteUser, session.status, session.id, supabase, ratePerSecond, handleHangup])
 
   // 4.d Avertissement solde bas pour l'homme si non-appelant (si applicable)
   useEffect(() => {
@@ -483,7 +520,8 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   // 7. Gestion de la fermeture ou du changement d'onglet
   useEffect(() => {
     const handleBeforeUnload = () => {
-      handleHangup()
+      console.log("FIN APPEL : fermeture ou rechargement de l'onglet (beforeunload)")
+      handleHangup("fermeture ou rechargement de l'onglet (beforeunload)")
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
@@ -681,7 +719,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         {/* Bouton Raccrocher */}
         <button
           type="button"
-          onClick={handleHangup}
+          onClick={() => handleHangup('clic manuel sur le bouton raccrocher')}
           className="w-16 h-16 rounded-full bg-gradient-to-tr from-red-600 to-rose-600 text-white flex items-center justify-center shadow-2xl shadow-red-950 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer border-2 border-white/20"
           title="Raccrocher l'appel"
           aria-label="Raccrocher"
