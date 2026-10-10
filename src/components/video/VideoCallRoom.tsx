@@ -76,15 +76,14 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   // Qui est l'homme (celui qui paie) et qui est la femme (celle qui reçoit) ?
   const isMan = currentProfile.gender === 'male'
   const womanProfile = currentProfile.gender === 'female' ? currentProfile : partner
-  const ratePerMinute = Number(session.price_per_minute || womanProfile?.price_per_minute || 25)
-  const ratePerSecond = ratePerMinute / 60
+  const ratePerMinute = Math.floor(Number(session.price_per_minute || womanProfile?.price_per_minute || 25))
 
-  // Soldes dynamiques
+  // Soldes dynamiques (nombres entiers stricts)
   const [callerRemainingTokens, setCallerRemainingTokens] = useState<number | null>(
-    currentProfile.gender === 'male' ? Number(currentProfile.token_balance ?? 0) : null
+    currentProfile.gender === 'male' ? Math.floor(Number(currentProfile.token_balance ?? 0)) : null
   )
   const [calleeEarnedTokens, setCalleeEarnedTokens] = useState<number>(
-    currentProfile.gender === 'female' ? Number(currentProfile.earned_tokens ?? 0) : 0
+    currentProfile.gender === 'female' ? Math.floor(Number(currentProfile.earned_tokens ?? 0)) : 0
   )
   const [showLowBalanceWarning, setShowLowBalanceWarning] = useState(false)
   const [isCallTerminatedByBalance, setIsCallTerminatedByBalance] = useState(false)
@@ -344,10 +343,10 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         const calleeProfile = profiles.find((p) => p.id === calleeId)
 
         if (callerProfile) {
-          setCallerRemainingTokens(Number(callerProfile.token_balance ?? 0))
+          setCallerRemainingTokens(Math.floor(Number(callerProfile.token_balance ?? 0)))
         }
         if (calleeProfile) {
-          setCalleeEarnedTokens(Number(calleeProfile.earned_tokens ?? 0))
+          setCalleeEarnedTokens(Math.floor(Number(calleeProfile.earned_tokens ?? 0)))
         }
       } catch (err) {
         console.error('Erreur chargement soldes appel:', err)
@@ -369,7 +368,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         },
         (payload: any) => {
           if (isMounted && payload.new) {
-            setCallerRemainingTokens(Number(payload.new.token_balance ?? 0))
+            setCallerRemainingTokens(Math.floor(Number(payload.new.token_balance ?? 0)))
           }
         }
       )
@@ -383,7 +382,7 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         },
         (payload: any) => {
           if (isMounted && payload.new) {
-            setCalleeEarnedTokens(Number(payload.new.earned_tokens ?? 0))
+            setCalleeEarnedTokens(Math.floor(Number(payload.new.earned_tokens ?? 0)))
           }
         }
       )
@@ -428,48 +427,30 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         }
 
         if (data) {
-          // Si le serveur indique explicitement que la session est déjà terminée
-          if (data.success === false && data.reason === 'call_ended') {
-            console.log("FIN APPEL : session marquée terminée côté serveur dans process_call_billing_tick (call_ended)")
-            handleHangup("session déjà terminée côté serveur (call_ended)")
-            return
-          }
-
-          // Récupération stricte des soldes numériques renvoyés par la base
-          const hasManBalance = data.man_balance !== undefined && data.man_balance !== null
-          const remainingTokens = hasManBalance ? Number(data.man_balance) : callerRemainingTokensRef.current
-          const earnedTokens = data.woman_earnings !== undefined && data.woman_earnings !== null
-            ? Number(data.woman_earnings)
-            : null
-
-          if (remainingTokens !== null) {
-            setCallerRemainingTokens(remainingTokens)
-          }
-          if (earnedTokens !== null) {
-            setCalleeEarnedTokens(earnedTokens)
-          }
-
-          // Prévenir l'homme environ 15 secondes avant que le solde soit épuisé (uniquement si solde > 0)
-          const currentBal = remainingTokens !== null ? remainingTokens : callerRemainingTokensRef.current
-          const secondsLeft = ratePerSecond > 0 && currentBal !== null ? currentBal / ratePerSecond : 999
-          if (secondsLeft <= 15 && currentBal !== null && currentBal > 0) {
-            setShowLowBalanceWarning(true)
-          } else {
-            setShowLowBalanceWarning(false)
-          }
-
-          // RÈGLE STRICTE : Couper l'appel UNIQUEMENT quand le solde atteint 0, JAMAIS AVANT !
-          if (currentBal !== null && currentBal <= 0) {
-            console.log(`FIN APPEL : solde épuisé (${currentBal} tokens restants)`)
+          // Si le serveur ordonne de couper l'appel (solde insuffisant pour la minute suivante ou session terminée)
+          if (data.should_hangup || (data.success === false && data.reason === 'call_ended')) {
+            const hangupReason = data.reason === 'insufficient_balance'
+              ? 'solde insuffisant pour la minute suivante'
+              : 'session terminée côté serveur'
+            console.log(`FIN APPEL : ${hangupReason}`)
             setIsCallTerminatedByBalance(true)
-            setCallStatusText('Solde de tokens épuisé. Fin de l’appel.')
+            setCallStatusText('Solde insuffisant pour la minute suivante. Fin de l’appel.')
             if (billingTimerRef.current) {
               clearInterval(billingTimerRef.current)
               billingTimerRef.current = null
             }
             setTimeout(() => {
-              handleHangup(`solde épuisé (${currentBal} tokens restants)`)
+              handleHangup(hangupReason)
             }, 1200)
+            return
+          }
+
+          // Mise à jour des soldes entiers renvoyés par la base
+          if (data.man_balance !== undefined && data.man_balance !== null) {
+            setCallerRemainingTokens(Math.floor(Number(data.man_balance)))
+          }
+          if (data.woman_earnings !== undefined && data.woman_earnings !== null) {
+            setCalleeEarnedTokens(Math.floor(Number(data.woman_earnings)))
           }
         }
       } catch (err) {
@@ -479,7 +460,11 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
       }
     }
 
-    billingTimerRef.current = setInterval(tickBilling, 3000)
+    // 1. Débit immédiat de la minute 1 dès que l'appel est connecté (pas d'attente de 3s)
+    tickBilling()
+
+    // 2. Vérification continue toutes les 2 secondes pour facturer à chaque nouvelle minute
+    billingTimerRef.current = setInterval(tickBilling, 2000)
 
     return () => {
       if (billingTimerRef.current) {
@@ -487,19 +472,23 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         billingTimerRef.current = null
       }
     }
-  }, [isCaller, isJoined, !!remoteUser, session.status, session.id, supabase, ratePerSecond, handleHangup])
+  }, [isCaller, isJoined, !!remoteUser, session.status, session.id, supabase, ratePerMinute, handleHangup])
 
-  // 4.d Avertissement solde bas pour l'homme si non-appelant (si applicable)
+  // 4.d Avertissement 10 secondes avant chaque nouvelle minute si solde insuffisant
   useEffect(() => {
     if (callerRemainingTokens !== null && isMan) {
-      const secondsLeft = ratePerSecond > 0 ? callerRemainingTokens / ratePerSecond : 999
-      if (secondsLeft <= 15 && callerRemainingTokens > 0) {
+      const secondsInMinute = callDuration % 60
+      // À partir de 50s (ex: 0:50, 1:50, 2:50...)
+      const is10SecondsBeforeNext = secondsInMinute >= 50
+      const cannotAffordNext = callerRemainingTokens < ratePerMinute
+
+      if (is10SecondsBeforeNext && cannotAffordNext) {
         setShowLowBalanceWarning(true)
       } else {
         setShowLowBalanceWarning(false)
       }
     }
-  }, [callerRemainingTokens, isMan, ratePerSecond])
+  }, [callDuration, callerRemainingTokens, isMan, ratePerMinute])
 
   // 5. Bascule du microphone
   const toggleMic = async () => {
@@ -644,23 +633,23 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
               </span>
             </div>
 
-            {/* Pour l'homme : Affichage de son solde restant qui diminue */}
+            {/* Pour l'homme : Affichage de son solde restant (entier strict) */}
             {isMan && callerRemainingTokens !== null && (
               <div className="px-3 py-1.5 rounded-2xl bg-stone-900/80 backdrop-blur-xl border border-amber-500/40 text-amber-300 flex items-center gap-1.5 shadow-lg">
                 <Coins className="w-3.5 h-3.5 text-amber-400" />
                 <span className="text-xs font-black font-mono">
-                  {callerRemainingTokens.toFixed(1)}
+                  {Math.floor(callerRemainingTokens)}
                 </span>
                 <span className="text-[10px] text-amber-400/80 font-medium">tokens</span>
               </div>
             )}
 
-            {/* Pour la femme : Affichage de ses gains qui augmentent en direct */}
+            {/* Pour la femme : Affichage de ses gains (entier strict) */}
             {!isMan && (
               <div className="px-3 py-1.5 rounded-2xl bg-emerald-950/80 backdrop-blur-xl border border-emerald-500/40 text-emerald-300 flex items-center gap-1.5 shadow-lg">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="text-xs font-black font-mono">
-                  +{calleeEarnedTokens.toFixed(1)}
+                  +{Math.floor(calleeEarnedTokens)}
                 </span>
                 <span className="text-[10px] text-emerald-400/80 font-medium">tokens gagnés</span>
               </div>
@@ -675,19 +664,19 @@ export const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           )}
         </div>
 
-        {/* Bannière d'alerte : solde de tokens presque épuisé */}
+        {/* Bannière d'alerte : solde insuffisant pour la minute suivante (10 secondes avant) */}
         {showLowBalanceWarning && !isCallTerminatedByBalance && isMan && (
           <div className="self-center px-4 py-1.5 rounded-2xl bg-amber-500/90 border border-amber-300 text-stone-950 text-xs font-black flex items-center gap-2 shadow-2xl animate-bounce">
             <AlertTriangle className="w-4 h-4 text-stone-950 shrink-0" />
-            <span>Tokens bientôt épuisés ! Rechargement conseillé.</span>
+            <span>Solde insuffisant : l’appel se terminera dans 10 secondes. Rechargez pour continuer.</span>
           </div>
         )}
 
-        {/* Bannière de fin pour solde épuisé */}
+        {/* Bannière de fin pour solde insuffisant */}
         {isCallTerminatedByBalance && (
           <div className="self-center px-4 py-2 rounded-2xl bg-rose-600/95 border border-rose-300 text-white text-xs font-black flex items-center gap-2 shadow-2xl animate-pulse">
             <AlertTriangle className="w-4 h-4 text-white shrink-0" />
-            <span>Tokens épuisés : Fin de l'appel...</span>
+            <span>Solde insuffisant : Fin de l'appel...</span>
           </div>
         )}
 
